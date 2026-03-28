@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     port: int = 8000
 
     jwt_secret: str = "replace_this_with_at_least_32_chars_jwt_secret"
-    jwt_expire_seconds: int = 86400
+    jwt_expire_seconds: int = 7200
     token_revocation_cleanup_interval_seconds: int = 60
 
     db_path: str = "./data/app.db"

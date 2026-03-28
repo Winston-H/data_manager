@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>幻梦数据管理系统</title>
+  <title>天枢数据中台</title>
   <link rel="stylesheet" href="/web/styles.css?v=20260328-login-characters-7" />
-  <script src="/web/app.js?v=20260327-1" defer></script>
+  <script src="/web/app.js?v=20260328-hide-stats-1" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#app-main">跳到主内容</a>
@@ -17,7 +17,7 @@
       <aside class="auth-brand reveal">
         <div class="auth-hero-copy">
           <p class="kicker">Secure Access</p>
-          <h1>幻梦数据管理系统</h1>
+          <h1>天枢数据中台</h1>
           <p class="subtitle">安全登录入口</p>
         </div>
         <div id="login-character-stage" class="character-stage" aria-hidden="true">
@@ -105,7 +105,7 @@
             <span class="tech-badge tech-badge-muted">审计链路在线</span>
           </div>
           <p class="kicker">数据安全工作台</p>
-          <h2>幻梦数据管理系统</h2>
+          <h2>天枢数据中台</h2>
           <div class="breadcrumb">
             <span>主页</span>
             <span class="crumb-sep">/</span>
@@ -160,20 +160,6 @@
                 <span class="tab-hint">检索数据</span>
               </span>
             </button>
-            <button id="tab-stats" type="button" class="tab" data-tab="stats-tab" role="tab" aria-controls="stats-tab" aria-selected="false">
-              <span class="tab-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M4 20h16"></path>
-                  <path d="M7 16v-5"></path>
-                  <path d="M12 16V8"></path>
-                  <path d="M17 16v-9"></path>
-                </svg>
-              </span>
-              <span class="tab-copy">
-                <span class="tab-text">统计</span>
-                <span class="tab-hint">数据概览</span>
-              </span>
-            </button>
             <button id="tab-import" type="button" class="tab" data-tab="import-tab" role="tab" aria-controls="import-tab" aria-selected="false">
               <span class="tab-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -216,7 +202,7 @@
           </nav>
           <div class="sidebar-note">
             <p>快捷切换</p>
-            <p><code>Alt + Q / S / I / J / U</code></p>
+            <p><code>Alt + Q / I / J / U</code></p>
           </div>
         </aside>
 
@@ -224,12 +210,11 @@
           <section class="panel quick-tools">
             <div class="quick-tools-row">
               <button type="button" id="shortcut-toggle-btn" class="btn btn-ghost btn-compact" aria-controls="shortcut-panel" aria-expanded="false">快捷键帮助</button>
-              <p class="quick-hint">Alt+Q/S/I/J/U 切换页签 · Ctrl+Enter 提交 · R 刷新</p>
+              <p class="quick-hint">Alt+Q/I/J/U 切换页签 · Ctrl+Enter 提交 · R 刷新</p>
             </div>
             <div id="shortcut-panel" class="shortcut-panel" role="region" aria-label="快捷键说明" hidden>
               <div class="shortcut-grid">
                 <div><kbd>Alt + Q</kbd><span>切到 查询</span></div>
-                <div><kbd>Alt + S</kbd><span>切到 统计</span></div>
                 <div><kbd>Alt + I</kbd><span>切到 导入</span></div>
                 <div><kbd>Alt + J</kbd><span>切到 任务</span></div>
                 <div><kbd>Alt + U</kbd><span>切到 用户</span></div>
@@ -304,29 +289,6 @@
                 <tbody id="query-body"></tbody>
               </table>
             </div>
-          </section>
-
-          <section id="stats-tab" class="panel tab-panel reveal" role="tabpanel" aria-labelledby="tab-stats">
-            <h2>数据统计</h2>
-            <p class="section-note">查看当前数据总量和导入概览。</p>
-            <div class="actions">
-              <button type="button" id="stats-refresh-btn" class="btn btn-primary">刷新统计</button>
-            </div>
-            <div class="card-grid">
-              <article class="panel card">
-                <h3>当前总数据量</h3>
-                <p id="stats-total-records" class="kpi-value">-</p>
-              </article>
-              <article class="panel card">
-                <h3>导入任务总数</h3>
-                <p id="stats-total-import-jobs" class="kpi-value">-</p>
-              </article>
-              <article class="panel card">
-                <h3>进行中任务</h3>
-                <p id="stats-running-import-jobs" class="kpi-value">-</p>
-              </article>
-            </div>
-            <div class="meta-strip" id="stats-meta" role="status" aria-live="polite">尚未加载统计</div>
           </section>
 
           <section id="import-tab" class="panel tab-panel reveal" role="tabpanel" aria-labelledby="tab-import">

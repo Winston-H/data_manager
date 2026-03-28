@@ -12,7 +12,7 @@ const ALLOWED_JOBS_PAGE_SIZE = new Set([10, 20, 50, 100]);
 const ALLOWED_AUDIT_PAGE_SIZE = new Set([10]);
 const ALLOWED_THEMES = new Set(["light", "dark"]);
 const USER_ROLE_OPTIONS = new Set(["SUPER_ADMIN", "ADMIN", "USER"]);
-const TAB_IDS = new Set(["query-tab", "stats-tab", "import-tab", "jobs-tab", "users-tab"]);
+const TAB_IDS = new Set(["query-tab", "import-tab", "jobs-tab", "users-tab"]);
 const QUERY_PAGE_SIZE = 10;
 const IMPORT_POLL_INTERVAL_MS = 1000;
 const AUTO_REFRESH_INTERVAL_MS = 10000;
@@ -50,14 +50,12 @@ const ROLE_LABELS = Object.freeze({
 });
 const TAB_LABELS = Object.freeze({
   "query-tab": "查询",
-  "stats-tab": "统计",
   "import-tab": "导入",
   "jobs-tab": "任务",
   "users-tab": "用户",
 });
 const TAB_SUBTITLES = Object.freeze({
   "query-tab": "优先使用姓名与年份筛选，整证身份证命中更快",
-  "stats-tab": "查看数据规模与导入概览",
   "import-tab": "批量导入加密数据并进入任务追踪",
   "jobs-tab": "查看导入任务进度与处理结果",
   "users-tab": "管理用户权限、状态与配额",
@@ -1496,9 +1494,6 @@ async function pollImportJob(jobId) {
         if (roleCanViewJobs()) {
           await loadJobs(state.jobsPage);
         }
-        if (state.token) {
-          await loadStats({ silent: true });
-        }
         toast(`导入任务 ${job.id} 结束：${statusLabel(job.status)}`, job.status === "SUCCESS" ? "success" : "error");
         return;
       }
@@ -2076,10 +2071,6 @@ async function openTabAndLoad(tabId) {
     return;
   }
   setTab(tabId);
-  if (tabId === "stats-tab") {
-    await loadStats();
-    return;
-  }
   if (tabId === "jobs-tab") {
     await loadJobs(state.jobsPage);
     return;
@@ -2096,7 +2087,6 @@ async function openTabAndLoad(tabId) {
 function focusPrimaryInputForCurrentTab() {
   const focusMap = {
     "query-tab": els.qName,
-    "stats-tab": els.statsRefreshBtn,
     "jobs-tab": els.jobsFilename,
     "users-tab": els.newUsername,
   };
@@ -2142,9 +2132,6 @@ async function refreshCurrentTabData() {
     await loadJobs(state.jobsPage);
     return;
   }
-  if (state.currentTab === "stats-tab") {
-    await loadStats();
-  }
 }
 
 function submitCurrentTabPrimaryAction() {
@@ -2179,9 +2166,6 @@ function submitCurrentTabPrimaryAction() {
     }
     els.auditFilterForm.requestSubmit();
     return;
-  }
-  if (state.currentTab === "stats-tab" && els.statsRefreshBtn instanceof HTMLButtonElement) {
-    els.statsRefreshBtn.click();
   }
 }
 
@@ -2221,7 +2205,6 @@ async function handleGlobalShortcuts(e) {
   if (e.altKey && !e.ctrlKey && !e.metaKey) {
     const tabMap = {
       q: "query-tab",
-      s: "stats-tab",
       i: "import-tab",
       j: "jobs-tab",
       u: "users-tab",
@@ -2346,14 +2329,6 @@ function bindEvents() {
         }
         return;
       }
-      if (btn.dataset.tab === "stats-tab") {
-        try {
-          await openTabAndLoad("stats-tab");
-        } catch (err) {
-          toast(err.message, "error");
-        }
-        return;
-      }
       if (btn.dataset.tab === "users-tab") {
         try {
           await openTabAndLoad("users-tab");
@@ -2396,7 +2371,6 @@ function bindEvents() {
         },
       });
       setUserFromLogin(body);
-      await loadStats();
       if (roleCanViewJobs()) {
         await loadJobs(state.jobsPage);
       }
@@ -2436,16 +2410,6 @@ function bindEvents() {
       toast(err.message, "error");
     }
   });
-
-  if (els.statsRefreshBtn) {
-    els.statsRefreshBtn.addEventListener("click", async () => {
-      try {
-        await loadStats();
-      } catch (err) {
-        toast(err.message, "error");
-      }
-    });
-  }
 
   els.clearQueryBtn.addEventListener("click", () => {
     setControlValue(els.qName, "");
@@ -3009,15 +2973,6 @@ async function bootstrap() {
   setControlValue(els.auditPageInput, state.auditPage);
   setCheckboxChecked(els.auditAutoRefresh, state.auditAutoRefresh);
   await hydrateLogin();
-  if (state.token) {
-    try {
-      await loadStats({ silent: true });
-    } catch (err) {
-      toast(err.message, "error");
-    }
-  } else {
-    resetStatsSummary("尚未登录");
-  }
   if (state.token && roleCanViewJobs()) {
     try {
       await loadJobs(state.jobsPage);
