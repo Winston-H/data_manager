@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>幻梦数据管理系统</title>
+  <link rel="stylesheet" href="/web/styles.css?v=20260328-login-characters-7" />
+  <script src="/web/app.js?v=20260327-1" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#app-main">跳到主内容</a>
+  <div class="backdrop backdrop-a" aria-hidden="true"></div>
+  <div class="backdrop backdrop-b" aria-hidden="true"></div>
+
+  <main id="app-main" class="screen-shell">
+    <section id="auth-screen" class="screen auth-screen" data-auth-mode="idle">
+      <aside class="auth-brand reveal">
+        <div class="auth-hero-copy">
+          <p class="kicker">Secure Access</p>
+          <h1>幻梦数据管理系统</h1>
+          <p class="subtitle">安全登录入口</p>
+        </div>
+        <div id="login-character-stage" class="character-stage" aria-hidden="true">
+          <span class="stage-orbit orbit-one"></span>
+          <span class="stage-orbit orbit-two"></span>
+          <span class="stage-glow glow-one"></span>
+          <span class="stage-glow glow-two"></span>
+
+          <div class="login-character char-purple">
+            <span class="character-shadow"></span>
+            <span class="character-arm arm-left"></span>
+            <span class="character-arm arm-right"></span>
+            <div class="character-face">
+              <span class="character-eye eye-left"><span class="character-pupil"></span></span>
+              <span class="character-eye eye-right"><span class="character-pupil"></span></span>
+              <span class="character-mouth"></span>
+            </div>
+          </div>
+
+          <div class="login-character char-amber">
+            <span class="character-shadow"></span>
+            <span class="character-arm arm-left"></span>
+            <span class="character-arm arm-right"></span>
+            <div class="character-face">
+              <span class="character-eye eye-left"><span class="character-pupil"></span></span>
+              <span class="character-eye eye-right"><span class="character-pupil"></span></span>
+              <span class="character-mouth"></span>
+            </div>
+          </div>
+
+          <div class="login-character char-slate">
+            <span class="character-shadow"></span>
+            <span class="character-arm arm-left"></span>
+            <span class="character-arm arm-right"></span>
+            <div class="character-face">
+              <span class="character-eye eye-left"><span class="character-pupil"></span></span>
+              <span class="character-eye eye-right"><span class="character-pupil"></span></span>
+              <span class="character-mouth"></span>
+            </div>
+          </div>
+
+          <div class="login-character char-cream">
+            <span class="character-shadow"></span>
+            <div class="character-face">
+              <span class="character-eye eye-left"><span class="character-pupil"></span></span>
+              <span class="character-eye eye-right"><span class="character-pupil"></span></span>
+              <span class="character-mouth"></span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <section class="auth-panel reveal login-auth-panel">
+        <div class="auth-panel-head">
+          <span class="auth-chip">身份校验</span>
+          <h2>进入工作台</h2>
+        </div>
+        <form id="login-form" class="auth-form">
+          <label class="auth-field">
+            <span>用户名</span>
+            <input id="username" type="text" placeholder="请输入用户名" autocomplete="username" required />
+          </label>
+          <label class="auth-field">
+            <span>密码</span>
+            <div class="password-input-row login-password-row">
+              <input id="password" type="password" placeholder="请输入密码" autocomplete="current-password" required />
+              <button type="button" id="login-password-toggle-btn" class="btn btn-ghost pwd-toggle-btn" aria-pressed="false" aria-label="显示密码">显示</button>
+            </div>
+          </label>
+          <button type="submit" class="btn btn-primary btn-block">登录并进入主页</button>
+        </form>
+        <div class="auth-panel-meta">
+          <p class="auth-help">默认管理员账号以本地初始化配置为准。</p>
+        </div>
+      </section>
+    </section>
+
+    <section id="app-screen" class="screen app-screen" hidden>
+      <header class="topbar reveal">
+        <div class="topbar-title">
+          <div class="topbar-techline" aria-hidden="true">
+            <span class="tech-dot"></span>
+            <span class="tech-badge">主控中枢</span>
+            <span class="tech-divider"></span>
+            <span class="tech-badge tech-badge-muted">审计链路在线</span>
+          </div>
+          <p class="kicker">数据安全工作台</p>
+          <h2>幻梦数据管理系统</h2>
+          <div class="breadcrumb">
+            <span>主页</span>
+            <span class="crumb-sep">/</span>
+            <span id="breadcrumb-current">查询</span>
+          </div>
+          <p class="subtitle" id="topbar-subtitle">全屏工作台，聚焦查询与管理</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="user-chip" id="user-chip">
+            <span id="user-label">未登录</span>
+          </div>
+          <button type="button" id="theme-toggle-btn" class="btn btn-ghost btn-compact" aria-pressed="false">深色模式</button>
+          <button type="button" id="logout-btn" class="btn btn-ghost">退出登录</button>
+        </div>
+      </header>
+
+      <div class="workspace reveal">
+        <aside class="sidebar panel">
+          <div class="sidebar-head">
+            <div class="sidebar-head-row">
+              <div>
+                <p class="kicker">主菜单</p>
+                <h3>工作台导航</h3>
+              </div>
+              <button
+                type="button"
+                id="sidebar-toggle-btn"
+                class="icon-btn"
+                aria-label="折叠侧边栏"
+                aria-expanded="true"
+                title="折叠侧边栏"
+              >
+                <span class="tab-icon icon-chevron" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M15 18L9 12l6-6"></path>
+                  </svg>
+                </span>
+              </button>
+            </div>
+            <p>按角色自动控制可访问模块</p>
+          </div>
+          <nav class="tabs" role="tablist" aria-label="工作台模块导航">
+            <button id="tab-query" type="button" class="tab active" data-tab="query-tab" role="tab" aria-controls="query-tab" aria-selected="true" aria-current="page">
+              <span class="tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <path d="m21 21-4.35-4.35"></path>
+                </svg>
+              </span>
+              <span class="tab-copy">
+                <span class="tab-text">查询</span>
+                <span class="tab-hint">检索数据</span>
+              </span>
+            </button>
+            <button id="tab-stats" type="button" class="tab" data-tab="stats-tab" role="tab" aria-controls="stats-tab" aria-selected="false">
+              <span class="tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 20h16"></path>
+                  <path d="M7 16v-5"></path>
+                  <path d="M12 16V8"></path>
+                  <path d="M17 16v-9"></path>
+                </svg>
+              </span>
+              <span class="tab-copy">
+                <span class="tab-text">统计</span>
+                <span class="tab-hint">数据概览</span>
+              </span>
+            </button>
+            <button id="tab-import" type="button" class="tab" data-tab="import-tab" role="tab" aria-controls="import-tab" aria-selected="false">
+              <span class="tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 3v12"></path>
+                  <path d="m7 10 5 5 5-5"></path>
+                  <path d="M4 20h16"></path>
+                </svg>
+              </span>
+              <span class="tab-copy">
+                <span class="tab-text">导入</span>
+                <span class="tab-hint">上传文件</span>
+              </span>
+            </button>
+            <button id="tab-jobs" type="button" class="tab" data-tab="jobs-tab" role="tab" aria-controls="jobs-tab" aria-selected="false">
+              <span class="tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="8"></circle>
+                  <path d="M12 8v5l3 2"></path>
+                </svg>
+              </span>
+              <span class="tab-copy">
+                <span class="tab-text">任务</span>
+                <span class="tab-hint">查看进度</span>
+              </span>
+            </button>
+            <button id="tab-users" type="button" class="tab" data-tab="users-tab" role="tab" aria-controls="users-tab" aria-selected="false">
+              <span class="tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="9" cy="10" r="3"></circle>
+                  <circle cx="16.5" cy="9" r="2.5"></circle>
+                  <path d="M3 19c0-2.8 2.6-5 6-5s6 2.2 6 5"></path>
+                  <path d="M14 19c.2-1.5 1.5-2.8 3.4-3.4"></path>
+                </svg>
+              </span>
+              <span class="tab-copy">
+                <span class="tab-text">用户</span>
+                <span class="tab-hint">角色配额</span>
+              </span>
+            </button>
+          </nav>
+          <div class="sidebar-note">
+            <p>快捷切换</p>
+            <p><code>Alt + Q / S / I / J / U</code></p>
+          </div>
+        </aside>
+
+        <section class="content-stack">
+          <section class="panel quick-tools">
+            <div class="quick-tools-row">
+              <button type="button" id="shortcut-toggle-btn" class="btn btn-ghost btn-compact" aria-controls="shortcut-panel" aria-expanded="false">快捷键帮助</button>
+              <p class="quick-hint">Alt+Q/S/I/J/U 切换页签 · Ctrl+Enter 提交 · R 刷新</p>
+            </div>
+            <div id="shortcut-panel" class="shortcut-panel" role="region" aria-label="快捷键说明" hidden>
+              <div class="shortcut-grid">
+                <div><kbd>Alt + Q</kbd><span>切到 查询</span></div>
+                <div><kbd>Alt + S</kbd><span>切到 统计</span></div>
+                <div><kbd>Alt + I</kbd><span>切到 导入</span></div>
+                <div><kbd>Alt + J</kbd><span>切到 任务</span></div>
+                <div><kbd>Alt + U</kbd><span>切到 用户</span></div>
+                <div><kbd>Alt + B</kbd><span>折叠/展开左侧导航</span></div>
+                <div><kbd>Ctrl + Enter</kbd><span>提交当前页主表单</span></div>
+                <div><kbd>/</kbd><span>聚焦当前页主要检索输入框</span></div>
+                <div><kbd>R</kbd><span>刷新当前页列表数据</span></div>
+                <div><kbd>J / ↓</kbd><span>查询结果下一行</span></div>
+                <div><kbd>K / ↑</kbd><span>查询结果上一行</span></div>
+                <div><kbd>Y</kbd><span>复制当前选中行</span></div>
+                <div><kbd>D</kbd><span>删除当前选中行（有权限时）</span></div>
+                <div><kbd>?</kbd><span>显示/隐藏快捷键面板</span></div>
+                <div><kbd>Esc</kbd><span>关闭快捷键面板</span></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="query-tab" class="panel tab-panel reveal active" role="tabpanel" aria-labelledby="tab-query">
+            <h2>数据查询</h2>
+            <p class="section-note">优先使用姓名模糊和年份前缀筛选；完整且有效的身份证号可快速命中，片段查询仅适合缩小范围后补充使用。</p>
+            <form id="query-form" class="query-grid">
+              <label>
+                <span>姓名模糊</span>
+                <input id="q-name" type="text" placeholder="支持单字/多字" />
+              </label>
+              <label>
+                <span>身份证号（整证优先）</span>
+                <input id="q-idno" type="text" placeholder="完整且有效身份证最快，片段查询不保证高性能" />
+              </label>
+              <label>
+                <span>年份（支持前缀）</span>
+                <input id="q-year" type="text" inputmode="numeric" placeholder="如 196 匹配 1960-1969" />
+              </label>
+              <div class="actions">
+                <button type="submit" class="btn btn-primary">执行查询</button>
+                <button type="button" id="clear-query-btn" class="btn btn-ghost">清空</button>
+              </div>
+            </form>
+            <div id="query-bulk-actions" class="bulk-bar" role="region" aria-label="查询结果批量操作" hidden>
+              <p id="query-selected-count" class="bulk-count" aria-live="polite">已选择 0 条</p>
+              <div class="actions">
+                <button type="button" id="bulk-copy-btn" class="btn btn-ghost btn-compact">复制选中</button>
+                <button type="button" id="bulk-delete-btn" class="btn btn-danger btn-compact">删除选中</button>
+                <button type="button" id="bulk-clear-btn" class="btn btn-ghost btn-compact">清空选择</button>
+              </div>
+            </div>
+            <div class="meta-strip" id="query-meta" role="status" aria-live="polite">尚未查询。优先使用姓名模糊或完整身份证；年份支持前缀筛选。</div>
+            <div class="pager-bar">
+              <div class="meta-strip" id="query-page-meta" role="status" aria-live="polite">第 1/1 页，每页 10 条</div>
+              <div class="actions">
+                <button type="button" id="query-prev-btn" class="btn btn-ghost">上一页</button>
+                <button type="button" id="query-next-btn" class="btn btn-ghost">下一页</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table id="query-table">
+                <thead>
+                  <tr>
+                    <th class="col-select">
+                      <label class="select-all-wrap">
+                        <input id="query-select-all" type="checkbox" aria-label="全选查询结果" />
+                      </label>
+                    </th>
+                    <th>ID</th>
+                    <th>姓名</th>
+                    <th>身份证号</th>
+                    <th>年份</th>
+                    <th>匹配分</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="query-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="stats-tab" class="panel tab-panel reveal" role="tabpanel" aria-labelledby="tab-stats">
+            <h2>数据统计</h2>
+            <p class="section-note">查看当前数据总量和导入概览。</p>
+            <div class="actions">
+              <button type="button" id="stats-refresh-btn" class="btn btn-primary">刷新统计</button>
+            </div>
+            <div class="card-grid">
+              <article class="panel card">
+                <h3>当前总数据量</h3>
+                <p id="stats-total-records" class="kpi-value">-</p>
+              </article>
+              <article class="panel card">
+                <h3>导入任务总数</h3>
+                <p id="stats-total-import-jobs" class="kpi-value">-</p>
+              </article>
+              <article class="panel card">
+                <h3>进行中任务</h3>
+                <p id="stats-running-import-jobs" class="kpi-value">-</p>
+              </article>
+            </div>
+            <div class="meta-strip" id="stats-meta" role="status" aria-live="polite">尚未加载统计</div>
+          </section>
+
+          <section id="import-tab" class="panel tab-panel reveal" role="tabpanel" aria-labelledby="tab-import">
+            <h2>数据导入</h2>
+            <p class="section-note">上传 XLSX/CSV 后自动导入，并实时查看进度。</p>
+            <form id="import-form" class="import-form">
+              <label class="dropzone" id="dropzone">
+                <input id="import-file" type="file" accept=".xlsx,.csv" />
+                <span class="drop-title">拖拽 XLSX/CSV 文件到此处，或点击选择</span>
+                <span class="drop-hint">建议单次导入后在“任务”页查看明细</span>
+              </label>
+              <label>
+                <span>服务器本地文件路径（可选）</span>
+                <input
+                  id="import-source-path"
+                  type="text"
+                  placeholder="/data/imports/合并数据.xlsx"
+                  autocomplete="off"
+                />
+              </label>
+              <div class="progress-wrap">
+                <div class="progress-bar">
+                  <div id="upload-progress"></div>
+                </div>
+                <span id="upload-progress-text">0%</span>
+              </div>
+              <div class="actions">
+                <button type="submit" class="btn btn-primary">上传并导入</button>
+              </div>
+            </form>
+            <div class="meta-strip" id="import-status" role="status" aria-live="polite">未开始导入</div>
+          </section>
+
+          <section id="jobs-tab" class="panel tab-panel reveal" role="tabpanel" aria-labelledby="tab-jobs">
+            <h2>导入任务</h2>
+            <p class="section-note">按状态筛选任务，支持取消与自动刷新。</p>
+            <form id="jobs-filter-form" class="inline-form">
+              <label>
+                <span>状态</span>
+                <select id="jobs-status">
+                  <option value="">全部</option>
+                  <option value="PENDING">排队中</option>
+                  <option value="RUNNING">进行中</option>
+                  <option value="SUCCESS">成功</option>
+                  <option value="FAILED">失败</option>
+                  <option value="CANCELLED">已取消</option>
+                </select>
+              </label>
+              <label>
+                <span>文件名包含</span>
+                <input id="jobs-filename" type="text" placeholder="关键词" />
+              </label>
+              <div class="actions">
+                <button type="submit" class="btn btn-primary">筛选</button>
+              </div>
+            </form>
+            <div class="meta-strip" id="jobs-meta" role="status" aria-live="polite">尚未加载任务列表</div>
+            <div class="pager-bar">
+              <label class="pager-field">
+                <span>每页</span>
+                <select id="jobs-page-size">
+                  <option value="10">10</option>
+                  <option value="20" selected>20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+              <label class="pager-field">
+                <span>页码</span>
+                <input id="jobs-page-input" type="number" min="1" step="1" value="1" />
+              </label>
+              <div class="actions">
+                <button type="button" id="jobs-refresh-btn" class="btn btn-ghost">刷新</button>
+                <button type="button" id="jobs-jump-btn" class="btn btn-ghost">跳转</button>
+                <button type="button" id="jobs-prev-btn" class="btn btn-ghost">上一页</button>
+                <button type="button" id="jobs-next-btn" class="btn btn-ghost">下一页</button>
+              </div>
+              <label class="toggle-check">
+                <input id="jobs-auto-refresh" type="checkbox" />
+                <span>自动刷新(5s)</span>
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>任务ID</th>
+                    <th>文件名</th>
+                    <th>状态</th>
+                    <th>统计</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="jobs-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="users-tab" class="panel tab-panel reveal" role="tabpanel" aria-labelledby="tab-users">
+            <h2>用户与配额管理</h2>
+            <p class="section-note">管理用户角色、状态与配额。点击“配额”后在下方输入上限并保存。</p>
+            <form id="create-user-form" class="inline-form" autocomplete="off">
+              <label>
+                <span>用户名</span>
+                <input id="new-username" type="text" placeholder="新用户名" autocomplete="off" />
+              </label>
+              <label>
+                <span>初始密码</span>
+                <div class="password-input-row">
+                  <input id="new-password" type="password" placeholder="至少 8 位" autocomplete="new-password" />
+                  <button
+                    type="button"
+                    id="toggle-new-password-btn"
+                    class="btn-mini pwd-toggle-btn"
+                    aria-label="显示密码"
+                    aria-pressed="false"
+                  >
+                    显示
+                  </button>
+                </div>
+              </label>
+              <label>
+                <span>角色</span>
+                <select id="new-role" required>
+                  <option value="" selected disabled>请选择角色</option>
+                  <option value="USER">普通用户</option>
+                  <option value="ADMIN">管理员</option>
+                  <option value="SUPER_ADMIN">超级管理员</option>
+                </select>
+              </label>
+              <div class="actions">
+                <button type="submit" class="btn btn-primary">创建用户</button>
+                <button type="button" id="reload-users-btn" class="btn btn-ghost">刷新列表</button>
+              </div>
+            </form>
+            <section id="quota-editor" class="quota-editor" hidden>
+              <p id="quota-editor-title" class="quota-editor-title">配额设置</p>
+              <div class="quota-editor-grid">
+                <label>
+                  <span>每日上限</span>
+                  <input id="quota-editor-daily" type="number" min="0" step="1" placeholder="请输入每日上限" />
+                </label>
+                <label>
+                  <span>总上限</span>
+                  <input id="quota-editor-total" type="number" min="0" step="1" placeholder="请输入总上限" />
+                </label>
+                <div class="actions">
+                  <button type="button" id="quota-editor-save-btn" class="btn btn-primary">保存配额</button>
+                  <button type="button" id="quota-editor-cancel-btn" class="btn btn-ghost">取消</button>
+                </div>
+              </div>
+            </section>
+            <div class="meta-strip" id="users-meta" role="status" aria-live="polite">尚未加载用户列表</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>用户名</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                    <th>上次登录</th>
+                    <th>配额</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="users-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="audit-tab" class="panel tab-panel reveal" role="tabpanel" hidden aria-hidden="true" aria-label="操作记录">
+            <h2>操作记录</h2>
+            <p class="section-note">按时间和动作筛选操作记录。</p>
+            <form id="audit-filter-form" class="inline-form">
+              <label>
+                <span>开始时间</span>
+                <input id="audit-from" type="datetime-local" />
+              </label>
+              <label>
+                <span>结束时间</span>
+                <input id="audit-to" type="datetime-local" />
+              </label>
+              <label>
+                <span>用户ID</span>
+                <input id="audit-user-id" type="number" min="1" />
+              </label>
+              <label>
+                <span>动作类型</span>
+                <input id="audit-action-type" type="text" placeholder="如 DATA_QUERY" />
+              </label>
+              <label>
+                <span>结果</span>
+                <select id="audit-action-result">
+                  <option value="">全部</option>
+                  <option value="SUCCESS">成功</option>
+                  <option value="FAILED">失败</option>
+                </select>
+              </label>
+              <div class="actions">
+                <button type="submit" class="btn btn-primary">筛选</button>
+                <button type="button" id="audit-reset-btn" class="btn btn-ghost">重置</button>
+              </div>
+            </form>
+            <div class="meta-strip" id="audit-meta" role="status" aria-live="polite" hidden></div>
+            <div class="pager-bar">
+              <label class="pager-field">
+                <span>每页</span>
+                <select id="audit-page-size">
+                  <option value="10" selected>10</option>
+                </select>
+              </label>
+              <label class="pager-field">
+                <span>页码</span>
+                <input id="audit-page-input" type="number" min="1" step="1" value="1" />
+              </label>
+              <div class="actions">
+                <button type="button" id="audit-refresh-btn" class="btn btn-ghost">刷新</button>
+                <button type="button" id="audit-jump-btn" class="btn btn-ghost">跳转</button>
+                <button type="button" id="audit-prev-btn" class="btn btn-ghost">上一页</button>
+                <button type="button" id="audit-next-btn" class="btn btn-ghost">下一页</button>
+              </div>
+              <label class="toggle-check">
+                <input id="audit-auto-refresh" type="checkbox" />
+                <span>自动刷新(5s)</span>
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>时间</th>
+                    <th>用户</th>
+                    <th>IP</th>
+                    <th>动作</th>
+                    <th>结果</th>
+                  </tr>
+                </thead>
+                <tbody id="audit-body"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <p id="sr-announcer" class="sr-only" aria-live="polite"></p>
+  <div id="toast-stack" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
+</body>
+</html>
