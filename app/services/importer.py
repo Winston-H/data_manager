@@ -12,10 +12,9 @@ from openpyxl import load_workbook
 
 from app.core.config import get_settings
 from app.core.error_reasons import ErrorReason
-from app.core.id_cards import fingerprint_id_no, is_valid_id_no
 from app.db.sqlite import open_db_connection
 from app.services.audit import write_audit
-from app.services.clickhouse_records import existing_id_fingerprints, insert_clickhouse_records
+from app.services.clickhouse_records import insert_clickhouse_records
 
 SUPPORTED_IMPORT_EXTENSIONS = frozenset({".xlsx", ".csv"})
 IMPORT_SOURCE_DIR = "import_jobs"
@@ -237,9 +236,24 @@ def _resolve_polars_column(columns: list[str], aliases: tuple[str, ...], fallbac
     return None
 
 
+def _find_optional_polars_column(columns: list[str], aliases: tuple[str, ...]) -> str | None:
+    alias_set = {_norm_header(item) for item in aliases}
+    for column in columns:
+        if _norm_header(column) in alias_set:
+            return column
+    return None
+
+
 def _empty_polars_import_frame():
     pl = _import_polars()
-    return pl.DataFrame(schema={"name": pl.String, "id_no": pl.String, "birth_year": pl.UInt16})
+    return pl.DataFrame(
+        schema={
+            "name": pl.String,
+            "id_no": pl.String,
+            "birth_year": pl.UInt16,
+            "birth_year_raw": pl.String,
+        }
+    )
 
 
 def _prepare_polars_frame(df) -> tuple[object, int, int]:
@@ -251,41 +265,37 @@ def _prepare_polars_frame(df) -> tuple[object, int, int]:
     name_col = _resolve_polars_column(columns, ("姓名", "name"), 0)
     id_col = _resolve_polars_column(columns, ("身份证号", "身份证", "证件号", "idno", "id_no"), 1)
     year_col = _resolve_polars_column(columns, ("年份", "year", "年", "birth_year"), 2)
+    year_raw_col = _find_optional_polars_column(columns, ("birth_year_raw", "yearraw", "年份原始", "原始年份"))
 
     selected = df.select(
         [
             pl.col(name_col).alias("name") if name_col else pl.lit(None).alias("name"),
             pl.col(id_col).alias("id_no") if id_col else pl.lit(None).alias("id_no"),
-            pl.col(year_col).alias("birth_year") if year_col else pl.lit(None).alias("birth_year"),
+            pl.col(year_raw_col or year_col).alias("birth_year_raw")
+            if (year_raw_col or year_col)
+            else pl.lit(None).alias("birth_year_raw"),
         ]
     ).with_columns(
         [
             pl.col("name").cast(pl.Utf8, strict=False).fill_null("").str.strip_chars(),
-            pl.col("id_no").cast(pl.Utf8, strict=False).fill_null("").str.replace_all(r"\s+", "").str.to_uppercase(),
-            pl.col("birth_year")
+            pl.col("id_no").cast(pl.Utf8, strict=False).fill_null("").str.strip_chars(),
+            pl.col("birth_year_raw")
             .cast(pl.Utf8, strict=False)
             .fill_null("")
             .str.strip_chars()
             .str.replace_all(r"\.0+$", ""),
         ]
+    ).with_columns(
+        pl.when(pl.col("birth_year_raw").str.contains(r"^\d{4}$"))
+        .then(pl.col("birth_year_raw").cast(pl.UInt16, strict=False))
+        .otherwise(pl.lit(0, dtype=pl.UInt16))
+        .alias("birth_year")
     )
 
-    non_blank = selected.filter(
-        ~((pl.col("name") == "") & (pl.col("id_no") == "") & (pl.col("birth_year") == ""))
-    )
-    total_rows = int(non_blank.height)
+    total_rows = int(selected.height)
     if total_rows == 0:
         return _empty_polars_import_frame(), 0, 0
-
-    required = non_blank.filter(
-        (pl.col("name") != "") & (pl.col("id_no") != "") & (pl.col("birth_year").str.contains(r"^\d{4}$"))
-    )
-    deduped = required.unique(subset=["id_no"], keep="first", maintain_order=True)
-    valid_mask = [is_valid_id_no(value) for value in deduped.get_column("id_no").to_list()]
-    valid = deduped.with_columns(pl.Series(name="_id_valid", values=valid_mask)).filter(pl.col("_id_valid")).drop("_id_valid")
-    valid = valid.with_columns(pl.col("birth_year").cast(pl.UInt16, strict=False))
-    skipped_rows = total_rows - int(valid.height)
-    return valid.select(["name", "id_no", "birth_year"]), total_rows, skipped_rows
+    return selected.select(["name", "id_no", "birth_year", "birth_year_raw"]), total_rows, 0
 
 
 def _load_excel_sheet_with_polars(file_path: Path, sheet_name: str):
@@ -361,30 +371,20 @@ def run_clickhouse_import_job(
             names = frame.get_column("name").to_list()
             id_nos = frame.get_column("id_no").to_list()
             birth_years = frame.get_column("birth_year").to_list()
+            birth_year_raws = frame.get_column("birth_year_raw").to_list()
 
             for idx in range(0, frame_height, max(1, settings.clickhouse_insert_batch_size)):
                 batch_names = names[idx : idx + settings.clickhouse_insert_batch_size]
                 batch_ids = id_nos[idx : idx + settings.clickhouse_insert_batch_size]
                 batch_years = birth_years[idx : idx + settings.clickhouse_insert_batch_size]
-                digests = [fingerprint_id_no(id_no) for id_no in batch_ids]
-                existing = existing_id_fingerprints(digests)
+                batch_year_raws = birth_year_raws[idx : idx + settings.clickhouse_insert_batch_size]
 
-                final_names: list[str] = []
-                final_ids: list[str] = []
-                final_years: list[int] = []
-                for pos, digest in enumerate(digests):
-                    if digest in existing:
-                        skipped_rows += 1
-                        continue
-                    final_names.append(str(batch_names[pos]).strip())
-                    final_ids.append(str(batch_ids[pos]).strip())
-                    final_years.append(int(batch_years[pos]))
-
-                if final_names:
+                if batch_names:
                     inserted_ids = insert_clickhouse_records(
-                        names=final_names,
-                        id_nos=final_ids,
-                        birth_years=final_years,
+                        names=[str(value).strip() for value in batch_names],
+                        id_nos=[str(value).strip() for value in batch_ids],
+                        birth_years=[int(value) for value in batch_years],
+                        birth_year_raws=[str(value) for value in batch_year_raws],
                         created_by=created_by,
                     )
                     success_rows += len(inserted_ids)

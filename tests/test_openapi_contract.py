@@ -507,7 +507,7 @@ class OpenApiContractTest(unittest.TestCase):
         self.assertEqual(body["message"], "Super admin cannot be disabled")
         self.assertEqual(body["details"]["reason"], ErrorReason.SUPER_ADMIN_CANNOT_BE_DISABLED.value)
 
-    def test_19_query_capped_flag_true_when_exceed_limit(self) -> None:
+    def test_19_query_returns_all_matches_without_cap(self) -> None:
         admin_headers = self._admin_headers()
         rows = [
             (f"zzcap{i:03d}", f"99010119900101{i:04d}", "2022")
@@ -533,8 +533,8 @@ class OpenApiContractTest(unittest.TestCase):
         query_resp = self.client.post("/api/v1/query", headers=admin_headers, json={"name_keyword": "z"})
         self.assertEqual(query_resp.status_code, 200, query_resp.text)
         body = query_resp.json()
-        self.assertEqual(body["meta"]["returned"], 100)
-        self.assertTrue(body["meta"]["capped"])
+        self.assertEqual(body["meta"]["returned"], 101)
+        self.assertFalse(body["meta"]["capped"])
 
     def test_20_query_blank_keyword_rejected(self) -> None:
         admin_headers = self._admin_headers()

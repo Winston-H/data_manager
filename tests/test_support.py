@@ -59,6 +59,7 @@ class _FakeClickHouseStore:
         names: list[str],
         id_nos: list[str],
         birth_years: list[int],
+        birth_year_raws: list[str] | None = None,
         created_by: int,
     ) -> list[int]:
         from app.core.crypto import encrypt_id_values
@@ -68,8 +69,14 @@ class _FakeClickHouseStore:
 
         keys = load_keys()
         data_key = keys.data_keys[keys.active_data_key_version]
-        normalized_ids = [normalize_id_no(value) for value in id_nos]
-        encrypted = encrypt_id_values(data_key, normalized_ids, workers=1)
+        raw_ids = [str(value or "").strip() for value in id_nos]
+        normalized_ids = [normalize_id_no(value) for value in raw_ids]
+        raw_years = (
+            [str(value) for value in birth_year_raws]
+            if birth_year_raws is not None
+            else [str(int(value)) for value in birth_years]
+        )
+        encrypted = encrypt_id_values(data_key, raw_ids, workers=1)
         inserted: list[int] = []
         for idx, enc_value in enumerate(encrypted):
             record_id = new_record_id()
@@ -77,7 +84,8 @@ class _FakeClickHouseStore:
                 "id": record_id,
                 "name": str(names[idx]),
                 "birth_year": int(birth_years[idx]),
-                "id_no_plain": normalized_ids[idx],
+                "birth_year_raw": raw_years[idx],
+                "id_no_plain": raw_ids[idx],
                 "id_no_cipher": enc_value,
                 "id_no_digest": fingerprint_id_no(normalized_ids[idx]),
                 "created_by": int(created_by),
@@ -92,14 +100,11 @@ class _FakeClickHouseStore:
         return 1 if self.rows.pop(int(record_id), None) is not None else 0
 
     def query_clickhouse_records(self, req) -> tuple[list[dict], bool]:
-        from app.core.config import get_settings
         from app.core.crypto import normalize_text
         from app.core.id_cards import normalize_id_no
         from app.core.key_manager import load_keys
 
         load_keys()
-        settings = get_settings()
-        result_limit = 100
 
         rows: list[dict[str, Any]] = []
         for row in self.rows.values():
@@ -161,8 +166,6 @@ class _FakeClickHouseStore:
                 item["match_score"] = score(item, exact_id=False)
                 filtered.append(item)
         else:
-            if len(rows) > int(settings.clickhouse_partial_id_scan_limit):
-                return [], False
             for item in rows:
                 normalized_id = normalize_id_no(item["id_no"])
                 if exact_id_kw and normalized_id != exact_id_kw:
@@ -175,8 +178,7 @@ class _FakeClickHouseStore:
                 filtered.append(item)
 
         filtered.sort(key=lambda item: (-float(item["match_score"]), int(item["year"]), str(item["name"]), int(item["id"])))
-        capped = len(filtered) > result_limit
-        return filtered[:result_limit], capped
+        return filtered, False
 
 
 def _patch_clickhouse_for_tests() -> None:

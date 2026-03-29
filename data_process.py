@@ -8,9 +8,6 @@ from pathlib import Path
 import polars as pl
 from openpyxl import load_workbook
 
-from app.core.id_cards import is_valid_id_no, normalize_id_no
-
-
 DEFAULT_INPUT_DIR = Path("/Users/wanghao/workspace/Project/myself_code/shuiwu/新建文件夹")
 DEFAULT_OUTPUT_CSV = Path("/Users/wanghao/workspace/Project/myself_code/shuiwu/新建文件夹/import_ready_merged.csv")
 DEFAULT_CHUNK_ROWS = 2_000_000
@@ -40,8 +37,23 @@ def _resolve_column(columns: list[str], aliases: tuple[str, ...], fallback_idx: 
     return None
 
 
+def _find_optional_column(columns: list[str], aliases: tuple[str, ...]) -> str | None:
+    alias_set = {_norm_header(alias) for alias in aliases}
+    for column in columns:
+        if _norm_header(column) in alias_set:
+            return column
+    return None
+
+
 def _empty_frame() -> pl.DataFrame:
-    return pl.DataFrame(schema={"name": pl.String, "id_no": pl.String, "birth_year": pl.UInt16})
+    return pl.DataFrame(
+        schema={
+            "name": pl.String,
+            "id_no": pl.String,
+            "birth_year": pl.UInt16,
+            "birth_year_raw": pl.String,
+        }
+    )
 
 
 def _prepare_frame(df: pl.DataFrame) -> tuple[pl.DataFrame, int, int]:
@@ -52,51 +64,37 @@ def _prepare_frame(df: pl.DataFrame) -> tuple[pl.DataFrame, int, int]:
     name_col = _resolve_column(columns, ("姓名", "name"), 0)
     id_col = _resolve_column(columns, ("身份证号", "身份证", "证件号", "idno", "id_no"), 1)
     year_col = _resolve_column(columns, ("年份", "year", "年", "birth_year"), 2)
+    year_raw_col = _find_optional_column(columns, ("birth_year_raw", "yearraw", "年份原始", "原始年份"))
 
     selected = df.select(
         [
             pl.col(name_col).alias("name") if name_col else pl.lit(None).alias("name"),
             pl.col(id_col).alias("id_no") if id_col else pl.lit(None).alias("id_no"),
-            pl.col(year_col).alias("birth_year") if year_col else pl.lit(None).alias("birth_year"),
+            pl.col(year_raw_col or year_col).alias("birth_year_raw")
+            if (year_raw_col or year_col)
+            else pl.lit(None).alias("birth_year_raw"),
         ]
     ).with_columns(
         [
             pl.col("name").cast(pl.Utf8, strict=False).fill_null("").str.strip_chars(),
-            pl.col("id_no").cast(pl.Utf8, strict=False).fill_null("").map_elements(normalize_id_no, return_dtype=pl.String),
-            pl.col("birth_year")
+            pl.col("id_no").cast(pl.Utf8, strict=False).fill_null("").str.strip_chars(),
+            pl.col("birth_year_raw")
             .cast(pl.Utf8, strict=False)
             .fill_null("")
             .str.strip_chars()
             .str.replace_all(r"\.0+$", ""),
         ]
+    ).with_columns(
+        pl.when(pl.col("birth_year_raw").str.contains(r"^\d{4}$"))
+        .then(pl.col("birth_year_raw").cast(pl.UInt16, strict=False))
+        .otherwise(pl.lit(0, dtype=pl.UInt16))
+        .alias("birth_year")
     )
 
-    non_blank = selected.filter(
-        ~((pl.col("name") == "") & (pl.col("id_no") == "") & (pl.col("birth_year") == ""))
-    )
-    total_rows = int(non_blank.height)
+    total_rows = int(selected.height)
     if total_rows == 0:
         return _empty_frame(), 0, 0
-
-    required = non_blank.filter(
-        (pl.col("name") != "") & (pl.col("id_no") != "") & (pl.col("birth_year").str.contains(r"^\d{4}$"))
-    )
-    deduped = required.unique(subset=["id_no"], keep="first", maintain_order=True)
-    if deduped.height == 0:
-        return _empty_frame(), total_rows, total_rows
-
-    valid_mask = pl.Series(
-        name="_id_valid",
-        values=[is_valid_id_no(value) for value in deduped.get_column("id_no").to_list()],
-        dtype=pl.Boolean,
-    )
-    valid = deduped.with_columns(valid_mask).filter(pl.col("_id_valid")).drop("_id_valid")
-    if valid.height == 0:
-        return _empty_frame(), total_rows, total_rows
-
-    valid = valid.with_columns(pl.col("birth_year").cast(pl.UInt16, strict=False))
-    skipped_rows = total_rows - int(valid.height)
-    return valid.select(["name", "id_no", "birth_year"]), total_rows, skipped_rows
+    return selected.select(["name", "id_no", "birth_year", "birth_year_raw"]), total_rows, 0
 
 
 def _load_excel_sheet(file_path: Path, sheet_name: str, engine: str) -> pl.DataFrame:
@@ -114,8 +112,8 @@ def _iter_prepared_frames(file_path: Path, *, sheet_workers: int, excel_engine: 
     if file_path.suffix.lower() == ".csv":
         frame, total_rows, skipped_rows = _prepare_frame(_load_csv(file_path))
         print(
-            f"📄 读取 CSV：{file_path.name}，原始有效行 {total_rows:,}，"
-            f"清洗后 {frame.height:,}，跳过 {skipped_rows:,}"
+            f"📄 读取 CSV：{file_path.name}，原始行 {total_rows:,}，"
+            f"保留 {frame.height:,}，跳过 {skipped_rows:,}"
         )
         yield frame, total_rows, skipped_rows
         return
@@ -136,8 +134,8 @@ def _iter_prepared_frames(file_path: Path, *, sheet_workers: int, excel_engine: 
             df = future.result()
             frame, total_rows, skipped_rows = _prepare_frame(df)
             print(
-                f"  └─ Sheet {sheet_name}：原始有效行 {total_rows:,}，"
-                f"清洗后 {frame.height:,}，跳过 {skipped_rows:,}"
+                f"  └─ Sheet {sheet_name}：原始行 {total_rows:,}，"
+                f"保留 {frame.height:,}，跳过 {skipped_rows:,}"
             )
             yield frame, total_rows, skipped_rows
 
@@ -173,11 +171,10 @@ def _flush_buffer(
 
     merged = frames[0] if len(frames) == 1 else pl.concat(frames, how="vertical_relaxed")
     rows_before_dedup = int(merged.height)
-    merged = merged.unique(subset=["id_no"], keep="first", maintain_order=True)
-    duplicate_rows = rows_before_dedup - int(merged.height)
+    duplicate_rows = 0
 
     if sort_rows and merged.height > 1:
-        merged = merged.sort(["birth_year", "name", "id_no"])
+        merged = merged.sort(["birth_year", "name", "id_no", "birth_year_raw"])
 
     next_chunk_index = chunk_index + 1
     output_path = _build_output_path(output_csv_path, chunk_index=next_chunk_index, split_output=split_output)
@@ -219,7 +216,7 @@ def process_all_data(
         raise FileNotFoundError(f"在目录 {input_dir} 中未找到 .xlsx/.csv 文件")
 
     print(f"✅ 找到 {len(input_files)} 个输入文件")
-    print("📌 输出结构固定为：name,id_no,birth_year")
+    print("📌 输出结构固定为：name,id_no,birth_year,birth_year_raw")
     if split_output:
         print(f"📌 按分片输出，目标每片约 {chunk_rows:,} 行")
     else:

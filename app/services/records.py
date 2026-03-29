@@ -31,6 +31,7 @@ def insert_record(
         names=[name],
         id_nos=[id_no],
         birth_years=[int(year)],
+        birth_year_raws=[str(year)],
         created_by=created_by,
     )
     return inserted[0]

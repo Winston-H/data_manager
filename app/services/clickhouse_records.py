@@ -10,9 +10,6 @@ from app.core.key_manager import load_keys
 from app.db.clickhouse import clickhouse_command, clickhouse_insert_json_rows, clickhouse_query_rows, get_clickhouse_config, sql_quote
 from app.schemas.query import QueryRequest
 
-RESULT_LIMIT = 100
-
-
 def _name_keyword_raw(value: str | None) -> str | None:
     raw = str(value or "").strip()
     return raw or None
@@ -64,6 +61,7 @@ def ensure_clickhouse_record_store() -> None:
           id UInt64,
           name String,
           birth_year UInt16,
+          birth_year_raw String DEFAULT toString(birth_year),
           id_no_cipher String,
           id_no_digest FixedString(64),
           created_by UInt64,
@@ -75,6 +73,13 @@ def ensure_clickhouse_record_store() -> None:
         PARTITION BY intDiv(toUInt32(birth_year), 10)
         ORDER BY (birth_year, name, id)
         SETTINGS index_granularity = 8192
+        """
+    )
+    clickhouse_command(
+        f"""
+        ALTER TABLE {cfg.records_table_sql}
+        ADD COLUMN IF NOT EXISTS birth_year_raw String DEFAULT toString(birth_year)
+        AFTER birth_year
         """
     )
 
@@ -130,6 +135,7 @@ def insert_clickhouse_records(
     names: list[str],
     id_nos: list[str],
     birth_years: list[int],
+    birth_year_raws: list[str] | None = None,
     created_by: int,
 ) -> list[int]:
     if not names:
@@ -138,9 +144,15 @@ def insert_clickhouse_records(
     settings = get_settings()
     keys = load_keys()
     data_key = keys.data_keys[keys.active_data_key_version]
+    raw_ids = [str(value or "").strip() for value in id_nos]
+    raw_years = (
+        [str(value) for value in birth_year_raws]
+        if birth_year_raws is not None
+        else [str(int(value)) for value in birth_years]
+    )
     encrypted_ids = encrypt_id_values(
         data_key,
-        [normalize_id_no(value) for value in id_nos],
+        raw_ids,
         workers=max(1, settings.import_encrypt_workers),
     )
 
@@ -151,8 +163,9 @@ def insert_clickhouse_records(
                 "id": new_record_id(),
                 "name": names[idx],
                 "birth_year": int(birth_years[idx]),
+                "birth_year_raw": raw_years[idx],
                 "id_no_cipher": enc_id,
-                "id_no_digest": fingerprint_id_no(id_nos[idx]),
+                "id_no_digest": fingerprint_id_no(raw_ids[idx]),
                 "created_by": int(created_by),
             }
         )
@@ -230,7 +243,7 @@ def _score_record(
     return score
 
 
-def _base_select_sql(where_clauses: list[str], *, limit: int) -> str:
+def _base_select_sql(where_clauses: list[str], *, limit: int, offset: int = 0) -> str:
     where_sql = " AND ".join(where_clauses) if where_clauses else "1"
     return f"""
         SELECT id, name, birth_year, id_no_cipher
@@ -238,7 +251,23 @@ def _base_select_sql(where_clauses: list[str], *, limit: int) -> str:
         WHERE {where_sql}
         ORDER BY birth_year ASC, name ASC, id ASC
         LIMIT {int(limit)}
+        OFFSET {int(offset)}
     """
+
+
+def _iter_decoded_candidates(where_clauses: list[str], *, batch_size: int) -> Iterable[dict[str, Any]]:
+    offset = 0
+    size = max(1, int(batch_size))
+    while True:
+        rows = clickhouse_query_rows(_base_select_sql(where_clauses, limit=size, offset=offset))
+        if not rows:
+            return
+        decoded = _decode_clickhouse_rows(rows)
+        for rec in decoded:
+            yield rec
+        if len(rows) < size:
+            return
+        offset += len(rows)
 
 
 def _query_by_name(req: QueryRequest) -> tuple[list[dict], bool]:
@@ -257,11 +286,9 @@ def _query_by_name(req: QueryRequest) -> tuple[list[dict], bool]:
     if exact_id_kw:
         where_clauses.append(f"id_no_digest = {sql_quote(fingerprint_id_no(exact_id_kw))}")
     where_clauses.extend(_year_filters(req))
-    rows = clickhouse_query_rows(_base_select_sql(where_clauses, limit=settings.clickhouse_query_candidate_limit))
-    decoded = _decode_clickhouse_rows(rows)
 
     filtered: list[dict] = []
-    for rec in decoded:
+    for rec in _iter_decoded_candidates(where_clauses, batch_size=settings.clickhouse_query_candidate_limit):
         normalized_name = normalize_text(rec["name"])
         normalized_id = normalize_id_no(rec["id_no"])
         if exact_name_kw and normalized_name != exact_name_kw:
@@ -282,8 +309,7 @@ def _query_by_name(req: QueryRequest) -> tuple[list[dict], bool]:
         filtered.append(rec)
 
     filtered.sort(key=lambda item: (-item["match_score"], item["year"], item["name"], item["id"]))
-    capped = len(filtered) > RESULT_LIMIT or len(rows) >= settings.clickhouse_query_candidate_limit
-    return filtered[:RESULT_LIMIT], capped
+    return filtered, False
 
 
 def _query_by_exact_id(req: QueryRequest) -> tuple[list[dict], bool]:
@@ -292,11 +318,8 @@ def _query_by_exact_id(req: QueryRequest) -> tuple[list[dict], bool]:
         return [], False
 
     where_clauses = [f"id_no_digest = {sql_quote(fingerprint_id_no(exact_id_kw))}", *_year_filters(req)]
-    rows = clickhouse_query_rows(_base_select_sql(where_clauses, limit=RESULT_LIMIT))
-    decoded = _decode_clickhouse_rows(rows)
-
     output: list[dict] = []
-    for rec in decoded:
+    for rec in _iter_decoded_candidates(where_clauses, batch_size=max(1, get_settings().clickhouse_query_candidate_limit)):
         if normalize_id_no(rec["id_no"]) != exact_id_kw:
             continue
         rec["match_score"] = _score_record(
@@ -308,7 +331,7 @@ def _query_by_exact_id(req: QueryRequest) -> tuple[list[dict], bool]:
         )
         output.append(rec)
     output.sort(key=lambda item: (-item["match_score"], item["year"], item["name"], item["id"]))
-    return output[:RESULT_LIMIT], len(output) > RESULT_LIMIT
+    return output, False
 
 
 def _query_by_id_prefix(req: QueryRequest) -> tuple[list[dict], bool]:
@@ -318,18 +341,8 @@ def _query_by_id_prefix(req: QueryRequest) -> tuple[list[dict], bool]:
         return [], False
 
     where_clauses = _year_filters(req)
-    scan_sql = f"SELECT count() AS c FROM {get_clickhouse_config().records_table_sql} WHERE {' AND '.join(where_clauses) if where_clauses else '1'}"
-    count_rows = clickhouse_query_rows(scan_sql)
-    total = int(count_rows[0]["c"]) if count_rows else 0
-    if total > settings.clickhouse_partial_id_scan_limit:
-        return [], False
-
-    rows = clickhouse_query_rows(
-        _base_select_sql(where_clauses, limit=settings.clickhouse_partial_id_scan_limit)
-    )
-    decoded = _decode_clickhouse_rows(rows)
     output: list[dict] = []
-    for rec in decoded:
+    for rec in _iter_decoded_candidates(where_clauses, batch_size=settings.clickhouse_query_candidate_limit):
         if not normalize_id_no(rec["id_no"]).startswith(id_prefix):
             continue
         rec["match_score"] = _score_record(
@@ -341,7 +354,7 @@ def _query_by_id_prefix(req: QueryRequest) -> tuple[list[dict], bool]:
         )
         output.append(rec)
     output.sort(key=lambda item: (-item["match_score"], item["year"], item["name"], item["id"]))
-    return output[:RESULT_LIMIT], len(output) > RESULT_LIMIT
+    return output, False
 
 
 def query_clickhouse_records(req: QueryRequest) -> tuple[list[dict], bool]:

@@ -20,8 +20,10 @@ class ImportCsvInferenceTest(unittest.TestCase):
             cleaned, total_rows, skipped_rows = _prepare_polars_frame(df)
 
         self.assertEqual(total_rows, 101)
-        self.assertGreaterEqual(skipped_rows, 0)
+        self.assertEqual(skipped_rows, 0)
+        self.assertEqual(cleaned.height, 101)
         self.assertIn(target_id, cleaned.get_column("id_no").to_list())
+        self.assertEqual(cleaned.get_column("birth_year_raw").tail(1).item(), "2023")
 
 
 if __name__ == "__main__":

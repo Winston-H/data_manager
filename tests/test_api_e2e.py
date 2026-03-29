@@ -71,8 +71,8 @@ class ApiE2ETest(unittest.TestCase):
         import_job = wait_import_job(self.client, admin_headers, int(import_data["id"]))
         self.assertEqual(import_job["status"], "SUCCESS")
         self.assertEqual(import_job["total_rows"], 3)
-        self.assertEqual(import_job["success_rows"], 2)
-        self.assertEqual(import_job["skipped_rows"], 1)
+        self.assertEqual(import_job["success_rows"], 3)
+        self.assertEqual(import_job["skipped_rows"], 0)
         self.assertEqual(import_job["failed_rows"], 0)
         self.assertEqual(
             import_job["total_rows"],
@@ -191,7 +191,7 @@ class ApiE2ETest(unittest.TestCase):
         self.assertGreaterEqual(len(rows), 1)
         self.assertTrue(all(str(item["year"]).startswith("196") for item in rows))
 
-    def test_05_import_dedup_skips_duplicate_rows(self) -> None:
+    def test_05_import_keeps_duplicate_rows(self) -> None:
         admin_token = login(self.client, "admin", "ChangeMe123!")
         admin_headers = {"Authorization": f"Bearer {admin_token}"}
         duplicated = ("去重样本", "110101199001010199", "2024")
@@ -211,8 +211,8 @@ class ApiE2ETest(unittest.TestCase):
         job = wait_import_job(self.client, admin_headers, int(import_resp.json()["data"]["id"]))
         self.assertEqual(job["status"], "SUCCESS")
         self.assertEqual(int(job["total_rows"]), 2)
-        self.assertEqual(int(job["success_rows"]), 1)
-        self.assertEqual(int(job["skipped_rows"]), 1)
+        self.assertEqual(int(job["success_rows"]), 2)
+        self.assertEqual(int(job["skipped_rows"]), 0)
         self.assertEqual(int(job["failed_rows"]), 0)
 
 
