@@ -98,7 +98,7 @@ class ApiE2ETest(unittest.TestCase):
         user_headers = {"Authorization": f"Bearer {user_token}"}
 
         user_query_1 = self.client.post(
-            "/api/v1/query", headers=user_headers, json={"id_no_keyword": "220202"}
+            "/api/v1/query", headers=user_headers, json={"id_no_keyword": "220299"}
         )
         self.assertEqual(user_query_1.status_code, 200, user_query_1.text)
         user_rows = user_query_1.json()["data"]
@@ -109,7 +109,7 @@ class ApiE2ETest(unittest.TestCase):
         self.assertTrue(user_rows[0]["id_no"].endswith("0022"))
 
         user_query_2 = self.client.post(
-            "/api/v1/query", headers=user_headers, json={"id_no_keyword": "220202"}
+            "/api/v1/query", headers=user_headers, json={"id_no_keyword": "220299"}
         )
         self.assertEqual(user_query_2.status_code, 429, user_query_2.text)
         self.assertEqual(user_query_2.json()["code"], "QUOTA_EXCEEDED")
@@ -184,7 +184,7 @@ class ApiE2ETest(unittest.TestCase):
         query_resp = self.client.post(
             "/api/v1/query",
             headers=admin_headers,
-            json={"name_keyword": "年筛", "year_prefix": "196"},
+            json={"name_keyword": "年", "year_prefix": "196"},
         )
         self.assertEqual(query_resp.status_code, 200, query_resp.text)
         rows = query_resp.json()["data"]

@@ -94,7 +94,7 @@ class _FakeClickHouseStore:
     def query_clickhouse_records(self, req) -> tuple[list[dict], bool]:
         from app.core.config import get_settings
         from app.core.crypto import normalize_text
-        from app.core.id_cards import fingerprint_id_no, is_valid_id_no, normalize_id_no
+        from app.core.id_cards import normalize_id_no
         from app.core.key_manager import load_keys
 
         load_keys()
@@ -121,60 +121,58 @@ class _FakeClickHouseStore:
                 return False
             return True
 
+        name_raw = str(req.name_keyword or "").strip()
+        name_kw = normalize_text(name_raw) if name_raw else None
+        name_exact = bool(name_raw and len(name_raw) > 1)
+        surname_kw = None if name_exact else (normalize_text(name_raw[:1]) if name_raw else None)
+        id_raw = normalize_id_no(req.id_no_keyword or "")
+        exact_id_kw = id_raw if len(id_raw) == 18 else None
+        id_prefix_kw = None if exact_id_kw else (id_raw[:4] or None)
+
         def score(item: dict[str, Any], *, exact_id: bool) -> float:
-            value = 1.0 + (100.0 if exact_id else 0.0)
-            if req.name_keyword:
-                name_kw = normalize_text(req.name_keyword)
-                normalized_name = normalize_text(item["name"])
-                if normalized_name == name_kw:
-                    value += 20.0
-                if name_kw in normalized_name:
-                    value += float(len(name_kw) * 5)
-            if req.id_no_keyword:
-                id_kw = normalize_id_no(req.id_no_keyword)
-                if id_kw in normalize_id_no(item["id_no"]):
-                    value += float(len(id_kw) * 3)
+            value = 1.0
+            normalized_name = normalize_text(item["name"])
+            normalized_id = normalize_id_no(item["id_no"])
+            if name_exact and name_kw and normalized_name == name_kw:
+                value += 30.0
+            elif surname_kw and normalized_name.startswith(surname_kw):
+                value += 20.0
+            if exact_id_kw and normalized_id == exact_id_kw:
+                value += 100.0
+            elif id_prefix_kw and normalized_id.startswith(id_prefix_kw):
+                value += float(len(id_prefix_kw) * 3)
             return value
 
         filtered: list[dict[str, Any]] = []
         if req.name_keyword:
-            name_kw = normalize_text(req.name_keyword)
             for item in rows:
-                if name_kw not in normalize_text(item["name"]):
+                normalized_name = normalize_text(item["name"])
+                normalized_id = normalize_id_no(item["id_no"])
+                if name_exact and name_kw and normalized_name != name_kw:
                     continue
-                if req.id_no_keyword and normalize_id_no(req.id_no_keyword) not in normalize_id_no(item["id_no"]):
+                if surname_kw and not normalized_name.startswith(surname_kw):
+                    continue
+                if exact_id_kw and normalized_id != exact_id_kw:
+                    continue
+                if id_prefix_kw and not normalized_id.startswith(id_prefix_kw):
                     continue
                 if not year_ok(item):
                     continue
                 item["match_score"] = score(item, exact_id=False)
                 filtered.append(item)
         else:
-            id_kw = normalize_id_no(req.id_no_keyword or "")
-            if is_valid_id_no(id_kw):
-                digest = fingerprint_id_no(id_kw)
-                for row in self.rows.values():
-                    if str(row["id_no_digest"]) != digest:
-                        continue
-                    item = {
-                        "id": int(row["id"]),
-                        "name": str(row["name"]),
-                        "id_no": str(row["id_no_plain"]),
-                        "year": int(row["birth_year"]),
-                    }
-                    if normalize_id_no(item["id_no"]) != id_kw or not year_ok(item):
-                        continue
-                    item["match_score"] = score(item, exact_id=True)
-                    filtered.append(item)
-            else:
-                if len(rows) > int(settings.clickhouse_partial_id_scan_limit):
-                    return [], False
-                for item in rows:
-                    if id_kw not in normalize_id_no(item["id_no"]):
-                        continue
-                    if not year_ok(item):
-                        continue
-                    item["match_score"] = score(item, exact_id=False)
-                    filtered.append(item)
+            if len(rows) > int(settings.clickhouse_partial_id_scan_limit):
+                return [], False
+            for item in rows:
+                normalized_id = normalize_id_no(item["id_no"])
+                if exact_id_kw and normalized_id != exact_id_kw:
+                    continue
+                if id_prefix_kw and not normalized_id.startswith(id_prefix_kw):
+                    continue
+                if not year_ok(item):
+                    continue
+                item["match_score"] = score(item, exact_id=bool(exact_id_kw))
+                filtered.append(item)
 
         filtered.sort(key=lambda item: (-float(item["match_score"]), int(item["year"]), str(item["name"]), int(item["id"])))
         capped = len(filtered) > result_limit

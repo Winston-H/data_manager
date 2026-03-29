@@ -4,13 +4,52 @@ from typing import Any, Iterable
 
 from app.core.config import get_settings
 from app.core.crypto import decrypt_id_value, encrypt_id_values, normalize_text
-from app.core.id_cards import fingerprint_id_no, is_valid_id_no, normalize_id_no
+from app.core.id_cards import fingerprint_id_no, normalize_id_no
 from app.core.ids import new_record_id
 from app.core.key_manager import load_keys
 from app.db.clickhouse import clickhouse_command, clickhouse_insert_json_rows, clickhouse_query_rows, get_clickhouse_config, sql_quote
 from app.schemas.query import QueryRequest
 
 RESULT_LIMIT = 100
+
+
+def _name_keyword_raw(value: str | None) -> str | None:
+    raw = str(value or "").strip()
+    return raw or None
+
+
+def _name_keyword(value: str | None) -> str | None:
+    raw = _name_keyword_raw(value)
+    return normalize_text(raw) if raw else None
+
+
+def _surname_keyword_raw(value: str | None) -> str | None:
+    raw = _name_keyword_raw(value)
+    return raw[:1] if raw else None
+
+
+def _surname_keyword(value: str | None) -> str | None:
+    raw = _surname_keyword_raw(value)
+    return normalize_text(raw) if raw else None
+
+
+def _name_match_exact(value: str | None) -> bool:
+    raw = _name_keyword_raw(value)
+    return bool(raw and len(raw) > 1)
+
+
+def _id_exact_keyword(value: str | None) -> str | None:
+    normalized = normalize_id_no(value or "")
+    if len(normalized) == 18:
+        return normalized
+    return None
+
+
+def _id_prefix_keyword(value: str | None) -> str | None:
+    normalized = normalize_id_no(value or "")
+    if len(normalized) == 18:
+        return None
+    return normalized[:4] or None
 
 
 def ensure_clickhouse_record_store() -> None:
@@ -166,18 +205,28 @@ def _decode_clickhouse_rows(rows: list[dict[str, Any]]) -> list[dict]:
     return output
 
 
-def _score_record(rec: dict, *, name_kw: str | None, id_kw: str | None, exact_id: bool) -> float:
+def _score_record(
+    rec: dict,
+    *,
+    exact_name_kw: str | None,
+    surname_kw: str | None,
+    exact_id_kw: str | None,
+    id_prefix: str | None,
+) -> float:
     score = 1.0
-    if exact_id:
-        score += 100.0
-    if name_kw:
-        normalized_name = normalize_text(rec["name"])
-        if normalized_name == name_kw:
+    normalized_name = normalize_text(rec["name"])
+    normalized_id = normalize_id_no(rec["id_no"])
+    if exact_name_kw:
+        if normalized_name == exact_name_kw:
+            score += 30.0
+    elif surname_kw:
+        if normalized_name.startswith(surname_kw):
             score += 20.0
-        if name_kw in normalized_name:
-            score += float(len(name_kw) * 5)
-    if id_kw and id_kw in normalize_id_no(rec["id_no"]):
-        score += float(len(id_kw) * 3)
+    if exact_id_kw:
+        if normalized_id == exact_id_kw:
+            score += 100.0
+    elif id_prefix and normalized_id.startswith(id_prefix):
+        score += float(len(id_prefix) * 3)
     return score
 
 
@@ -194,20 +243,42 @@ def _base_select_sql(where_clauses: list[str], *, limit: int) -> str:
 
 def _query_by_name(req: QueryRequest) -> tuple[list[dict], bool]:
     settings = get_settings()
-    name_kw_raw = req.name_keyword or ""
-    where_clauses = [f"positionCaseInsensitiveUTF8(name, {sql_quote(name_kw_raw)}) > 0", *_year_filters(req)]
+    name_raw = _name_keyword_raw(req.name_keyword)
+    if not name_raw:
+        return [], False
+
+    name_exact = _name_match_exact(req.name_keyword)
+    exact_name_kw = _name_keyword(req.name_keyword) if name_exact else None
+    surname_kw = None if name_exact else _surname_keyword(req.name_keyword)
+    exact_id_kw = _id_exact_keyword(req.id_no_keyword)
+    id_prefix = None if exact_id_kw else _id_prefix_keyword(req.id_no_keyword)
+
+    where_clauses = [f"name = {sql_quote(name_raw)}" if name_exact else f"positionCaseInsensitiveUTF8(name, {sql_quote(name_raw[:1])}) = 1"]
+    if exact_id_kw:
+        where_clauses.append(f"id_no_digest = {sql_quote(fingerprint_id_no(exact_id_kw))}")
+    where_clauses.extend(_year_filters(req))
     rows = clickhouse_query_rows(_base_select_sql(where_clauses, limit=settings.clickhouse_query_candidate_limit))
     decoded = _decode_clickhouse_rows(rows)
 
-    name_kw = normalize_text(name_kw_raw) if name_kw_raw else None
-    id_kw = normalize_id_no(req.id_no_keyword) if req.id_no_keyword else None
     filtered: list[dict] = []
     for rec in decoded:
-        if name_kw and name_kw not in normalize_text(rec["name"]):
+        normalized_name = normalize_text(rec["name"])
+        normalized_id = normalize_id_no(rec["id_no"])
+        if exact_name_kw and normalized_name != exact_name_kw:
             continue
-        if id_kw and id_kw not in normalize_id_no(rec["id_no"]):
+        if surname_kw and not normalized_name.startswith(surname_kw):
             continue
-        rec["match_score"] = _score_record(rec, name_kw=name_kw, id_kw=id_kw, exact_id=False)
+        if exact_id_kw and normalized_id != exact_id_kw:
+            continue
+        if id_prefix and not normalized_id.startswith(id_prefix):
+            continue
+        rec["match_score"] = _score_record(
+            rec,
+            exact_name_kw=exact_name_kw,
+            surname_kw=surname_kw,
+            exact_id_kw=exact_id_kw,
+            id_prefix=id_prefix,
+        )
         filtered.append(rec)
 
     filtered.sort(key=lambda item: (-item["match_score"], item["year"], item["name"], item["id"]))
@@ -216,23 +287,36 @@ def _query_by_name(req: QueryRequest) -> tuple[list[dict], bool]:
 
 
 def _query_by_exact_id(req: QueryRequest) -> tuple[list[dict], bool]:
-    id_kw = normalize_id_no(req.id_no_keyword or "")
-    where_clauses = [f"id_no_digest = {sql_quote(fingerprint_id_no(id_kw))}", *_year_filters(req)]
+    exact_id_kw = _id_exact_keyword(req.id_no_keyword)
+    if not exact_id_kw:
+        return [], False
+
+    where_clauses = [f"id_no_digest = {sql_quote(fingerprint_id_no(exact_id_kw))}", *_year_filters(req)]
     rows = clickhouse_query_rows(_base_select_sql(where_clauses, limit=RESULT_LIMIT))
     decoded = _decode_clickhouse_rows(rows)
 
     output: list[dict] = []
     for rec in decoded:
-        if normalize_id_no(rec["id_no"]) != id_kw:
+        if normalize_id_no(rec["id_no"]) != exact_id_kw:
             continue
-        rec["match_score"] = _score_record(rec, name_kw=None, id_kw=id_kw, exact_id=True)
+        rec["match_score"] = _score_record(
+            rec,
+            exact_name_kw=None,
+            surname_kw=None,
+            exact_id_kw=exact_id_kw,
+            id_prefix=None,
+        )
         output.append(rec)
     output.sort(key=lambda item: (-item["match_score"], item["year"], item["name"], item["id"]))
     return output[:RESULT_LIMIT], len(output) > RESULT_LIMIT
 
 
-def _scan_for_partial_id(req: QueryRequest) -> tuple[list[dict], bool]:
+def _query_by_id_prefix(req: QueryRequest) -> tuple[list[dict], bool]:
     settings = get_settings()
+    id_prefix = _id_prefix_keyword(req.id_no_keyword)
+    if not id_prefix:
+        return [], False
+
     where_clauses = _year_filters(req)
     scan_sql = f"SELECT count() AS c FROM {get_clickhouse_config().records_table_sql} WHERE {' AND '.join(where_clauses) if where_clauses else '1'}"
     count_rows = clickhouse_query_rows(scan_sql)
@@ -244,12 +328,17 @@ def _scan_for_partial_id(req: QueryRequest) -> tuple[list[dict], bool]:
         _base_select_sql(where_clauses, limit=settings.clickhouse_partial_id_scan_limit)
     )
     decoded = _decode_clickhouse_rows(rows)
-    id_kw = normalize_id_no(req.id_no_keyword or "")
     output: list[dict] = []
     for rec in decoded:
-        if id_kw not in normalize_id_no(rec["id_no"]):
+        if not normalize_id_no(rec["id_no"]).startswith(id_prefix):
             continue
-        rec["match_score"] = _score_record(rec, name_kw=None, id_kw=id_kw, exact_id=False)
+        rec["match_score"] = _score_record(
+            rec,
+            exact_name_kw=None,
+            surname_kw=None,
+            exact_id_kw=None,
+            id_prefix=id_prefix,
+        )
         output.append(rec)
     output.sort(key=lambda item: (-item["match_score"], item["year"], item["name"], item["id"]))
     return output[:RESULT_LIMIT], len(output) > RESULT_LIMIT
@@ -258,8 +347,6 @@ def _scan_for_partial_id(req: QueryRequest) -> tuple[list[dict], bool]:
 def query_clickhouse_records(req: QueryRequest) -> tuple[list[dict], bool]:
     if req.name_keyword:
         return _query_by_name(req)
-
-    id_kw = normalize_id_no(req.id_no_keyword or "")
-    if is_valid_id_no(id_kw):
+    if _id_exact_keyword(req.id_no_keyword):
         return _query_by_exact_id(req)
-    return _scan_for_partial_id(req)
+    return _query_by_id_prefix(req)

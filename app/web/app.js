@@ -18,7 +18,7 @@ const IMPORT_POLL_INTERVAL_MS = 1000;
 const AUTO_REFRESH_INTERVAL_MS = 10000;
 const TOAST_MAX_ITEMS = 3;
 const SESSION_EXPIRED_MESSAGE = "登录状态已失效，请重新登录";
-const QUERY_IDLE_MESSAGE = "尚未查询。优先使用姓名模糊或完整身份证；年份支持前缀筛选。";
+const QUERY_IDLE_MESSAGE = "尚未查询。姓名单字按首字匹配，多字按完整姓名匹配；身份证完整18位按整证匹配，否则按前4位匹配；年份支持前缀筛选。";
 const AUDIT_ACTION_LABELS = Object.freeze({
   LOGIN: "登录",
   LOGOUT: "退出登录",
@@ -55,7 +55,7 @@ const TAB_LABELS = Object.freeze({
   "users-tab": "用户",
 });
 const TAB_SUBTITLES = Object.freeze({
-  "query-tab": "优先使用姓名与年份筛选，整证身份证命中更快",
+  "query-tab": "姓名单字按首字、多字按全名；身份证完整18位精确，否则按前4位",
   "import-tab": "批量导入加密数据并进入任务追踪",
   "jobs-tab": "查看导入任务进度与处理结果",
   "users-tab": "管理用户权限、状态与配额",

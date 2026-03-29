@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>天枢数据中台</title>
   <link rel="stylesheet" href="/web/styles.css?v=20260328-login-characters-7" />
-  <script src="/web/app.js?v=20260328-hide-stats-1" defer></script>
+  <script src="/web/app.js?v=20260329-query-prefix-2" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#app-main">跳到主内容</a>
@@ -234,15 +234,15 @@
 
           <section id="query-tab" class="panel tab-panel reveal active" role="tabpanel" aria-labelledby="tab-query">
             <h2>数据查询</h2>
-            <p class="section-note">优先使用姓名模糊和年份前缀筛选；完整且有效的身份证号可快速命中，片段查询仅适合缩小范围后补充使用。</p>
+            <p class="section-note">姓名单字按首字匹配，多字按完整姓名匹配；身份证完整18位按整证匹配，否则按前4位匹配；年份支持前缀筛选。</p>
             <form id="query-form" class="query-grid">
               <label>
-                <span>姓名模糊</span>
-                <input id="q-name" type="text" placeholder="支持单字/多字" />
+                <span>姓名</span>
+                <input id="q-name" type="text" placeholder="支持输入姓氏或完整姓名" />
               </label>
               <label>
-                <span>身份证号（整证优先）</span>
-                <input id="q-idno" type="text" placeholder="完整且有效身份证最快，片段查询不保证高性能" />
+                <span>身份证号</span>
+                <input id="q-idno" type="text" placeholder="支持输入前4位或完整18位身份证号" />
               </label>
               <label>
                 <span>年份（支持前缀）</span>
@@ -261,7 +261,7 @@
                 <button type="button" id="bulk-clear-btn" class="btn btn-ghost btn-compact">清空选择</button>
               </div>
             </div>
-            <div class="meta-strip" id="query-meta" role="status" aria-live="polite">尚未查询。优先使用姓名模糊或完整身份证；年份支持前缀筛选。</div>
+            <div class="meta-strip" id="query-meta" role="status" aria-live="polite">尚未查询。姓名单字按首字匹配，多字按完整姓名匹配；身份证完整18位按整证匹配，否则按前4位匹配；年份支持前缀筛选。</div>
             <div class="pager-bar">
               <div class="meta-strip" id="query-page-meta" role="status" aria-live="polite">第 1/1 页，每页 10 条</div>
               <div class="actions">

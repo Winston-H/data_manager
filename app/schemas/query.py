@@ -7,15 +7,15 @@ class QueryRequest(BaseModel):
             "description": (
                 "至少提供 name_keyword 或 id_no_keyword 之一。"
                 "year_prefix/year_start/year_end 为可选附加筛选条件。"
-                "完整且有效的身份证号优先走快速精确匹配；片段查询仅适合缩小范围后的补充检索。"
+                "姓名单字按首字匹配，多字按完整姓名匹配；身份证号完整18位按整证精确匹配，否则按前4位匹配。"
             )
         }
     )
 
-    name_keyword: str | None = Field(default=None, description="姓名模糊查询词")
+    name_keyword: str | None = Field(default=None, description="姓名查询词。单字时按首字匹配，多字时按完整姓名匹配。")
     id_no_keyword: str | None = Field(
         default=None,
-        description="身份证号查询词。完整且有效的身份证号优先快速命中；片段查询仅适合缩小范围后的补充检索。",
+        description="身份证号查询词。完整18位按整证精确匹配，否则仅使用前4位进行前缀匹配。",
     )
     year_prefix: str | None = Field(default=None, description="年份前缀筛选，如 196 匹配 1960-1969")
     year_start: int | None = Field(default=None, description="年份范围起点，需与姓名或身份证查询组合使用")

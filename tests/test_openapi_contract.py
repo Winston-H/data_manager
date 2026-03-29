@@ -316,7 +316,9 @@ class OpenApiContractTest(unittest.TestCase):
         finally:
             conn.close()
 
-        query_resp = self.client.post("/api/v1/query", headers=admin_headers, json={"id_no_keyword": "220202"})
+        query_resp = self.client.post(
+            "/api/v1/query", headers=admin_headers, json={"id_no_keyword": "220202198812120022"}
+        )
         self.assertEqual(query_resp.status_code, 200, query_resp.text)
         names = [item["name"] for item in query_resp.json()["data"]]
         self.assertIn("正常记录", names)
@@ -528,7 +530,7 @@ class OpenApiContractTest(unittest.TestCase):
         job_data = wait_import_job(self.client, admin_headers, int(import_resp.json()["data"]["id"]))
         self.assertEqual(job_data["status"], "SUCCESS")
 
-        query_resp = self.client.post("/api/v1/query", headers=admin_headers, json={"name_keyword": "zzcap"})
+        query_resp = self.client.post("/api/v1/query", headers=admin_headers, json={"name_keyword": "z"})
         self.assertEqual(query_resp.status_code, 200, query_resp.text)
         body = query_resp.json()
         self.assertEqual(body["meta"]["returned"], 100)
