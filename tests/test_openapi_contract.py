@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -12,6 +13,7 @@ from app.core.config import get_settings
 from app.db.sqlite import open_db_connection
 from app.services.importer import create_import_job
 from app.services.records import insert_record
+from app.services.audit import write_audit
 from tests.test_support import (
     configure_test_env,
     create_test_client,
@@ -682,7 +684,7 @@ class OpenApiContractTest(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_27_admin_can_view_audit_logs(self) -> None:
+    def test_27_admin_cannot_view_audit_logs(self) -> None:
         admin_headers = self._admin_headers()
         create_resp = self.client.post(
             "/api/v1/users",
@@ -694,10 +696,93 @@ class OpenApiContractTest(unittest.TestCase):
         audit_admin_token = login(self.client, "u_audit_admin", "AdminPass123!")
         audit_admin_headers = {"Authorization": f"Bearer {audit_admin_token}"}
         logs_resp = self.client.get("/api/v1/audit-logs?page=1&page_size=20", headers=audit_admin_headers)
-        self.assertEqual(logs_resp.status_code, 200, logs_resp.text)
+        self.assertEqual(logs_resp.status_code, 403, logs_resp.text)
         body = logs_resp.json()
-        self.assertIn("data", body)
-        self.assertIn("total", body)
+        self.assertEqual(body["code"], "FORBIDDEN")
+        self.assertEqual(body["details"]["reason"], ErrorReason.INSUFFICIENT_PERMISSIONS.value)
+
+    def test_27_audit_detail_omits_disallowed_fields_but_keeps_query_inputs(self) -> None:
+        conn = open_db_connection()
+        try:
+            write_audit(
+                conn,
+                user_id=1,
+                username="admin",
+                user_role="SUPER_ADMIN",
+                ip_address="127.0.0.1",
+                action_type="DATA_QUERY",
+                action_result="SUCCESS",
+                detail={
+                    "name_keyword": "陈",
+                    "id_no_keyword": "3729",
+                    "year_prefix": "196",
+                    "status": "RUNNING",
+                    "created_by": 99,
+                    "filename_contains": "abc.xlsx",
+                },
+                trace_id="trace-audit-prune",
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT detail_json FROM audit_logs WHERE trace_id = ?",
+                ("trace-audit-prune",),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row)
+        detail = json.loads(row["detail_json"])
+        self.assertEqual(detail["name_keyword"], "陈")
+        self.assertEqual(detail["id_no_keyword"], "3729")
+        self.assertEqual(detail["year_prefix"], "196")
+        self.assertNotIn("status", detail)
+        self.assertNotIn("created_by", detail)
+        self.assertNotIn("filename_contains", detail)
+
+    def test_27_audit_logs_retention_keeps_only_recent_three_days(self) -> None:
+        admin_headers = self._admin_headers()
+        old_time = (datetime.now(timezone.utc) - timedelta(days=4)).strftime("%Y-%m-%d %H:%M:%S")
+        recent_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+        conn = open_db_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO audit_logs(event_time, username, user_role, action_type, action_result, trace_id)
+                VALUES (?, 'admin', 'SUPER_ADMIN', 'RETENTION_OLD', 'SUCCESS', 'trace-retention-old')
+                """,
+                (old_time,),
+            )
+            conn.execute(
+                """
+                INSERT INTO audit_logs(event_time, username, user_role, action_type, action_result, trace_id)
+                VALUES (?, 'admin', 'SUPER_ADMIN', 'RETENTION_RECENT', 'SUCCESS', 'trace-retention-recent')
+                """,
+                (recent_time,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        logs_resp = self.client.get("/api/v1/audit-logs?page=1&page_size=100", headers=admin_headers)
+        self.assertEqual(logs_resp.status_code, 200, logs_resp.text)
+        action_types = [item["action_type"] for item in logs_resp.json()["data"]]
+        self.assertIn("RETENTION_RECENT", action_types)
+        self.assertNotIn("RETENTION_OLD", action_types)
+
+        conn = open_db_connection()
+        try:
+            old_row = conn.execute(
+                "SELECT 1 AS ok FROM audit_logs WHERE trace_id = ?",
+                ("trace-retention-old",),
+            ).fetchone()
+            recent_row = conn.execute(
+                "SELECT 1 AS ok FROM audit_logs WHERE trace_id = ?",
+                ("trace-retention-recent",),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNone(old_row)
+        self.assertIsNotNone(recent_row)
 
     def test_28_user_cannot_import_and_cannot_view_others_job(self) -> None:
         admin_headers = self._admin_headers()

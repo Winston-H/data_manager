@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     bootstrap_superadmin_password: str = "ChangeMe123!"
     query_mask_roles: str = "USER"
     hidden_usernames: str = ""
+    audit_log_retention_days: int = 3
+    audit_log_cleanup_interval_seconds: int = 300
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

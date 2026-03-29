@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.deps import CurrentUser, get_conn, require_roles
 from app.api.openapi_responses import RESP_401, RESP_403, RESP_500
 from app.schemas.audit import AuditLogListResponse
+from app.services.audit import cleanup_expired_audit_logs
 from app.services.visibility import hidden_user_ids, hidden_usernames
 
 router = APIRouter()
@@ -23,9 +24,10 @@ def list_audit_logs(
     page: int = 1,
     page_size: int = 50,
     with_total: bool = Query(default=True),
-    _: CurrentUser = Depends(require_roles("SUPER_ADMIN", "ADMIN")),
+    _: CurrentUser = Depends(require_roles("SUPER_ADMIN")),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
+    cleanup_expired_audit_logs(conn)
     conditions = []
     params: list[object] = []
     hidden_names = sorted(hidden_usernames())

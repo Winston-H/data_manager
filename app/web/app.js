@@ -12,7 +12,7 @@ const ALLOWED_JOBS_PAGE_SIZE = new Set([10, 20, 50, 100]);
 const ALLOWED_AUDIT_PAGE_SIZE = new Set([10]);
 const ALLOWED_THEMES = new Set(["light", "dark"]);
 const USER_ROLE_OPTIONS = new Set(["SUPER_ADMIN", "ADMIN", "USER"]);
-const TAB_IDS = new Set(["query-tab", "import-tab", "jobs-tab", "users-tab"]);
+const TAB_IDS = new Set(["query-tab", "import-tab", "jobs-tab", "users-tab", "audit-tab"]);
 const QUERY_PAGE_SIZE = 10;
 const IMPORT_POLL_INTERVAL_MS = 1000;
 const AUTO_REFRESH_INTERVAL_MS = 10000;
@@ -34,6 +34,64 @@ const AUDIT_ACTION_LABELS = Object.freeze({
   QUOTA_UPDATE: "更新配额",
   QUOTA_VIEW: "查看配额",
 });
+const AUDIT_DETAIL_KEY_LABELS = Object.freeze({
+  actual_role: "当前角色",
+  action_result: "结果",
+  action_type: "动作",
+  async: "异步执行",
+  context: "上下文",
+  created_by: "创建者ID",
+  created_username: "创建用户名",
+  daily_limit: "每日上限",
+  daily_used: "今日已用",
+  error: "错误",
+  error_type: "错误类型",
+  failed_rows: "失败行数",
+  filename: "文件名",
+  filename_contains: "文件名包含",
+  is_active: "状态",
+  job_id: "任务ID",
+  missing_or_invalid: "缺失或无效字段",
+  name_keyword: "姓名关键词",
+  id_no_keyword: "身份证关键词",
+  page: "页码",
+  page_size: "每页数量",
+  quota: "配额",
+  reason: "原因",
+  record_id: "记录ID",
+  recovered: "恢复执行",
+  required_roles: "所需角色",
+  returned: "返回条数",
+  role: "角色",
+  rows: "行数",
+  skipped_rows: "跳过行数",
+  source_path: "服务器文件路径",
+  success_rows: "成功行数",
+  status: "状态",
+  target_id: "目标ID",
+  target_type: "目标类型",
+  token_error: "令牌错误",
+  total_records: "总记录数",
+  total_limit: "总上限",
+  total_rows: "总行数",
+  total_used: "总已用",
+  user_id: "用户ID",
+  username: "用户名",
+  year_end: "结束年份",
+  year_prefix: "年份前缀",
+  year_start: "开始年份",
+});
+const AUDIT_DETAIL_HIDDEN_KEYS = new Set(["created_by", "filename_contains", "status"]);
+const AUDIT_ERROR_TYPE_LABELS = Object.freeze({
+  SourceFileMissing: "源文件不存在",
+  FileNotFoundError: "文件不存在",
+  PermissionError: "权限不足",
+  TimeoutError: "处理超时",
+  ValueError: "值错误",
+  TypeError: "类型错误",
+  RuntimeError: "运行时错误",
+  AssertionError: "断言失败",
+});
 const STATUS_LABELS = Object.freeze({
   PENDING: "排队中",
   RUNNING: "进行中",
@@ -53,12 +111,14 @@ const TAB_LABELS = Object.freeze({
   "import-tab": "导入",
   "jobs-tab": "任务",
   "users-tab": "用户",
+  "audit-tab": "操作记录",
 });
 const TAB_SUBTITLES = Object.freeze({
   "query-tab": "姓名单字按首字、多字按全名；身份证完整18位精确，否则按前4位",
   "import-tab": "批量导入加密数据并进入任务追踪",
   "jobs-tab": "查看导入任务进度与处理结果",
   "users-tab": "管理用户权限、状态与配额",
+  "audit-tab": "按时间、动作和用户筛选审计记录",
 });
 const ERROR_REASON_LABELS = Object.freeze({
   api_error_unspecified: "请求失败，请稍后重试",
@@ -203,6 +263,7 @@ const state = {
   auditAutoRefresh: false,
   auditAutoRefreshTimer: null,
   auditLastUpdated: "",
+  auditRows: [],
   theme: readThemePref(),
 };
 
@@ -535,8 +596,7 @@ function roleCanManageUsers() {
 }
 
 function roleCanViewAudit() {
-  const roleCode = currentUserRoleCode();
-  return roleCode === "SUPER_ADMIN" || roleCode === "ADMIN";
+  return currentUserRoleCode() === "SUPER_ADMIN";
 }
 
 function normalizePositiveInt(value, fallback = 1) {
@@ -750,6 +810,9 @@ function renderLoadingRow(tbodyEl, colspan, text) {
   if (tbodyEl === els.queryBody) {
     state.queryRowElements = [];
   }
+  if (tbodyEl === els.auditBody) {
+    state.auditRows = [];
+  }
 }
 
 function renderEmptyRow(tbodyEl, colspan, title, hint = "") {
@@ -764,6 +827,9 @@ function renderEmptyRow(tbodyEl, colspan, title, hint = "") {
     `${visualHtml}<div class='table-empty-title'>${escapeHtml(title)}</div>${hintHtml}</td></tr>`;
   if (tbodyEl === els.queryBody) {
     state.queryRowElements = [];
+  }
+  if (tbodyEl === els.auditBody) {
+    state.auditRows = [];
   }
 }
 
@@ -1152,9 +1218,7 @@ async function copyRowsByIds(rowIds) {
   if (orderedRows.length === 0) {
     return 0;
   }
-  const lines = orderedRows.map((item) =>
-    [item.id, item.name ?? "", item.id_no ?? "", item.year ?? "", item.match_score ?? 0].join("\t")
-  );
+  const lines = orderedRows.map((item) => [item.name ?? "", item.id_no ?? "", item.year ?? ""].join("\t"));
   await copyText(lines.join("\n"));
   markQueryRowsProcessed(orderedRows.map((item) => Number(item.id)));
   return orderedRows.length;
@@ -1307,7 +1371,6 @@ function renderQueryRows(rows, options = {}) {
       const name = escapeHtml(row.name ?? "");
       const idNo = escapeHtml(row.id_no ?? "");
       const year = escapeHtml(row.year ?? "");
-      const score = escapeHtml(row.match_score ?? 0);
       const actionButtons = [
         `<button class="btn-mini copy-row-btn" data-row-id="${rowId}">复制整行</button>`,
         canDelete ? `<button class="btn-mini delete-row-btn" data-row-id="${rowId}">删除</button>` : "",
@@ -1317,11 +1380,9 @@ function renderQueryRows(rows, options = {}) {
         <td class="col-select">
           <input class="query-row-check" type="checkbox" data-row-id="${rowId}" aria-label="选择记录 ${rowId}" />
         </td>
-        <td>${rowId}</td>
         <td>${name}</td>
         <td>${idNo}</td>
         <td>${year}</td>
-        <td>${score}</td>
         <td><div class="mini-actions">${actionButtons}</div></td>
       </tr>`;
     })
@@ -1335,7 +1396,7 @@ function renderQueryRows(rows, options = {}) {
   if (pagedRows.length > 0) {
     setActiveQueryRowByIndex(0, { scroll: false });
   } else {
-    renderEmptyRow(els.queryBody, 7, "暂无符合条件的数据", "请调整检索条件后再试");
+    renderEmptyRow(els.queryBody, 5, "暂无符合条件的数据", "请调整检索条件后再试");
     clearActiveQueryRow();
   }
   updateQueryPagerUi();
@@ -1355,7 +1416,7 @@ async function runQuery() {
   state.queryPage = 1;
   updateQueryPagerUi();
   els.queryMeta.textContent = "查询执行中...";
-  renderLoadingRow(els.queryBody, 7, "正在执行查询");
+  renderLoadingRow(els.queryBody, 5, "正在执行查询");
 
   try {
     const payload = {};
@@ -1395,7 +1456,7 @@ async function runQuery() {
     if (els.queryMeta) {
       els.queryMeta.textContent = `查询失败：${message}`;
     }
-    renderEmptyRow(els.queryBody, 7, "查询失败", message);
+    renderEmptyRow(els.queryBody, 5, "查询失败", message);
     throw err;
   } finally {
     if (state.queryAbortController === abortController) {
@@ -1813,21 +1874,194 @@ function auditActionLabel(actionType) {
   return AUDIT_ACTION_LABELS[key] || actionType || "-";
 }
 
+function auditDetailKeyLabel(key) {
+  const normalized = String(key || "").trim();
+  return AUDIT_DETAIL_KEY_LABELS[normalized] || normalized || "未命名字段";
+}
+
+function tryParseAuditDetailString(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return value;
+  }
+  if (!((text.startsWith("{") && text.endsWith("}")) || (text.startsWith("[") && text.endsWith("]")))) {
+    return value;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return value;
+  }
+}
+
+function buildAuditYearText(detail) {
+  const yearPrefix = String(detail.year_prefix || "").trim();
+  const yearStart = detail.year_start;
+  const yearEnd = detail.year_end;
+  if (yearPrefix) {
+    return yearPrefix;
+  }
+  if (yearStart !== undefined && yearStart !== null && yearEnd !== undefined && yearEnd !== null) {
+    return `${yearStart}-${yearEnd}`;
+  }
+  if (yearStart !== undefined && yearStart !== null) {
+    return `>= ${yearStart}`;
+  }
+  if (yearEnd !== undefined && yearEnd !== null) {
+    return `<= ${yearEnd}`;
+  }
+  return "";
+}
+
+function extractAuditQueryInputs(detail) {
+  if (!detail || typeof detail !== "object" || Array.isArray(detail)) {
+    return { name: "", idNo: "", year: "" };
+  }
+  return {
+    name: String(detail.name_keyword || "").trim(),
+    idNo: String(detail.id_no_keyword || "").trim(),
+    year: buildAuditYearText(detail),
+  };
+}
+
+function normalizeAuditDetailObject(detail) {
+  if (!detail || typeof detail !== "object" || Array.isArray(detail)) {
+    return detail;
+  }
+  const normalizedEntries = [];
+  const { name: nameInput, idNo: idInput, year: yearInput } = extractAuditQueryInputs(detail);
+
+  if (nameInput) {
+    normalizedEntries.push(["姓名", localizeAuditDetailValue("name_keyword", nameInput)]);
+  }
+  if (idInput) {
+    normalizedEntries.push(["身份证", localizeAuditDetailValue("id_no_keyword", idInput)]);
+  }
+  if (yearInput) {
+    normalizedEntries.push(["年份", yearInput]);
+  }
+
+  for (const [rawKey, rawValue] of Object.entries(detail)) {
+    if (
+      AUDIT_DETAIL_HIDDEN_KEYS.has(rawKey) ||
+      rawKey === "name_keyword" ||
+      rawKey === "id_no_keyword" ||
+      rawKey === "year_prefix" ||
+      rawKey === "year_start" ||
+      rawKey === "year_end"
+    ) {
+      continue;
+    }
+    const localizedValue = localizeAuditDetailValue(rawKey, rawValue);
+    if (
+      localizedValue === null ||
+      localizedValue === undefined ||
+      localizedValue === "" ||
+      localizedValue === "无"
+    ) {
+      continue;
+    }
+    normalizedEntries.push([auditDetailKeyLabel(rawKey), localizedValue]);
+  }
+  return Object.fromEntries(normalizedEntries);
+}
+
+function localizeAuditDetailValue(key, value) {
+  if (typeof value === "string") {
+    value = tryParseAuditDetailString(value);
+  }
+  if (value === null || value === undefined || value === "") {
+    return "无";
+  }
+  if (key === "required_roles" && Array.isArray(value)) {
+    return value.map((item) => roleLabel(item));
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => localizeAuditDetailValue("", item));
+  }
+  if (value && typeof value === "object") {
+    return normalizeAuditDetailObject(value);
+  }
+  if (typeof value === "boolean") {
+    if (String(key || "").trim() === "is_active") {
+      return value ? "启用" : "停用";
+    }
+    return value ? "是" : "否";
+  }
+  if (String(key || "").trim() === "role") {
+    return roleLabel(value);
+  }
+  if (String(key || "").trim() === "actual_role") {
+    return roleLabel(value);
+  }
+  if (String(key || "").trim() === "action_result") {
+    return statusLabel(value);
+  }
+  if (String(key || "").trim() === "action_type") {
+    return auditActionLabel(value);
+  }
+  if (String(key || "").trim() === "status") {
+    return statusLabel(value);
+  }
+  if (String(key || "").trim() === "reason") {
+    const reasonKey = safeLower(value);
+    return ERROR_REASON_LABELS[reasonKey] || String(value || "-");
+  }
+  if (String(key || "").trim() === "error_type") {
+    return AUDIT_ERROR_TYPE_LABELS[String(value || "").trim()] || String(value || "-");
+  }
+  return value;
+}
+
+function formatAuditDetailText(item) {
+  const rawDetail =
+    item && item.detail_json !== null && item.detail_json !== undefined
+      ? typeof item.detail_json === "string"
+        ? tryParseAuditDetailString(item.detail_json)
+        : item.detail_json
+      : null;
+  const { name: nameInput, idNo: idInput, year: yearInput } = extractAuditQueryInputs(rawDetail);
+  const detailJson =
+    item && item.detail_json !== null && item.detail_json !== undefined
+      ? typeof item.detail_json === "string"
+        ? JSON.stringify(localizeAuditDetailValue("detail_json", item.detail_json), null, 2)
+        : JSON.stringify(localizeAuditDetailValue("detail_json", item.detail_json), null, 2)
+      : "无";
+  return [
+    `时间: ${item.event_time || "-"}`,
+    `用户: ${item.username || "-"}`,
+    `角色: ${roleLabel(item.user_role || "-")}`,
+    `IP: ${item.ip_address || "-"}`,
+    `动作: ${auditActionLabel(item.action_type)}`,
+    `结果: ${statusLabel(item.action_result || "-")}`,
+    nameInput ? `姓名: ${nameInput}` : null,
+    idInput ? `身份证: ${idInput}` : null,
+    yearInput ? `年份: ${yearInput}` : null,
+    "",
+    "详情:",
+    detailJson,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+}
+
 function renderAuditRows(rows) {
-  const rowsHtml = (rows || [])
-    .map((item) => `
+  state.auditRows = Array.isArray(rows) ? rows : [];
+  const rowsHtml = state.auditRows
+    .map((item, index) => `
       <td>${escapeHtml(item.id)}</td>
       <td>${escapeHtml(item.event_time || "-")}</td>
       <td>${escapeHtml(item.username || "-")} (${escapeHtml(roleLabel(item.user_role || "-"))})</td>
       <td>${escapeHtml(item.ip_address || "-")}</td>
       <td>${escapeHtml(auditActionLabel(item.action_type))}</td>
       <td>${statusBadge(item.action_result || "-")}</td>
+      <td><div class="mini-actions"><button class="btn-mini audit-detail-btn" data-audit-index="${index}">详情</button></div></td>
     `)
     .map((cells) => `<tr>${cells}</tr>`)
     .join("");
   els.auditBody.innerHTML = rowsHtml;
-  if (!rows || rows.length === 0) {
-    renderEmptyRow(els.auditBody, 6, "暂无操作记录", "请调整过滤条件或扩大时间范围");
+  if (state.auditRows.length === 0) {
+    renderEmptyRow(els.auditBody, 7, "暂无操作记录", "请调整过滤条件或扩大时间范围");
   }
 }
 
@@ -1865,7 +2099,7 @@ function updateAuditPagerUi() {
 async function loadAuditLogs(page = 1, options = {}) {
   const silent = !!options.silent;
   if (!roleCanViewAudit()) {
-    renderEmptyRow(els.auditBody, 6, "当前角色无查看权限", "仅超级管理员和管理员可查看操作记录");
+    renderEmptyRow(els.auditBody, 7, "当前角色无查看权限", "仅超级管理员可查看操作记录");
     els.auditMeta.textContent = "";
     state.auditPage = 1;
     state.auditTotal = 0;
@@ -1901,7 +2135,7 @@ async function loadAuditLogs(page = 1, options = {}) {
 
   if (!silent) {
     els.auditMeta.textContent = "";
-    renderLoadingRow(els.auditBody, 6, "正在加载操作记录");
+    renderLoadingRow(els.auditBody, 7, "正在加载操作记录");
   }
 
   cancelRequest(state.auditAbortController);
@@ -2089,6 +2323,7 @@ function focusPrimaryInputForCurrentTab() {
     "query-tab": els.qName,
     "jobs-tab": els.jobsFilename,
     "users-tab": els.newUsername,
+    "audit-tab": els.auditActionType,
   };
   const target = focusMap[state.currentTab];
   if (!target || target.disabled) {
@@ -2208,6 +2443,7 @@ async function handleGlobalShortcuts(e) {
       i: "import-tab",
       j: "jobs-tab",
       u: "users-tab",
+      a: "audit-tab",
     };
     if (lowerKey === "b") {
       e.preventDefault();
@@ -2332,6 +2568,14 @@ function bindEvents() {
       if (btn.dataset.tab === "users-tab") {
         try {
           await openTabAndLoad("users-tab");
+        } catch (err) {
+          toast(err.message, "error");
+        }
+        return;
+      }
+      if (btn.dataset.tab === "audit-tab") {
+        try {
+          await openTabAndLoad("audit-tab");
         } catch (err) {
           toast(err.message, "error");
         }
@@ -2862,6 +3106,23 @@ function bindEvents() {
       }
     });
   }
+
+  els.auditBody.addEventListener("click", (e) => {
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (!target.classList.contains("audit-detail-btn")) {
+      return;
+    }
+    const auditIndex = Number(target.dataset.auditIndex || -1);
+    const item = Number.isInteger(auditIndex) && auditIndex >= 0 ? state.auditRows[auditIndex] : null;
+    if (!item) {
+      toast("未找到该条操作记录", "error");
+      return;
+    }
+    window.alert(formatAuditDetailText(item));
+  });
 
   els.auditFilterForm.addEventListener("submit", async (e) => {
     e.preventDefault();

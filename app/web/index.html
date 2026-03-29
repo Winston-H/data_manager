@@ -199,10 +199,25 @@
                 <span class="tab-hint">角色配额</span>
               </span>
             </button>
+            <button id="tab-audit" type="button" class="tab" data-tab="audit-tab" role="tab" aria-controls="audit-tab" aria-selected="false">
+              <span class="tab-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 3h6"></path>
+                  <path d="M10 8h4"></path>
+                  <rect x="5" y="3" width="14" height="18" rx="2"></rect>
+                  <path d="M9 12h6"></path>
+                  <path d="M9 16h6"></path>
+                </svg>
+              </span>
+              <span class="tab-copy">
+                <span class="tab-text">操作记录</span>
+                <span class="tab-hint">审计查询</span>
+              </span>
+            </button>
           </nav>
           <div class="sidebar-note">
             <p>快捷切换</p>
-            <p><code>Alt + Q / I / J / U</code></p>
+            <p><code>Alt + Q / I / J / U / A</code></p>
           </div>
         </aside>
 
@@ -210,7 +225,7 @@
           <section class="panel quick-tools">
             <div class="quick-tools-row">
               <button type="button" id="shortcut-toggle-btn" class="btn btn-ghost btn-compact" aria-controls="shortcut-panel" aria-expanded="false">快捷键帮助</button>
-              <p class="quick-hint">Alt+Q/I/J/U 切换页签 · Ctrl+Enter 提交 · R 刷新</p>
+              <p class="quick-hint">Alt+Q/I/J/U/A 切换页签 · Ctrl+Enter 提交 · R 刷新</p>
             </div>
             <div id="shortcut-panel" class="shortcut-panel" role="region" aria-label="快捷键说明" hidden>
               <div class="shortcut-grid">
@@ -278,11 +293,9 @@
                         <input id="query-select-all" type="checkbox" aria-label="全选查询结果" />
                       </label>
                     </th>
-                    <th>ID</th>
                     <th>姓名</th>
                     <th>身份证号</th>
                     <th>年份</th>
-                    <th>匹配分</th>
                     <th>操作</th>
                   </tr>
                 </thead>
@@ -527,6 +540,7 @@
                     <th>IP</th>
                     <th>动作</th>
                     <th>结果</th>
+                    <th>操作</th>
                   </tr>
                 </thead>
                 <tbody id="audit-body"></tbody>
