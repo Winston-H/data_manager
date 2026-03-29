@@ -1,4 +1,6 @@
+import json
 import sqlite3
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 
@@ -10,6 +12,36 @@ from app.services.quota import enforce_and_consume_quota, get_quota
 from app.services.query import apply_role_mask, query_records
 
 router = APIRouter()
+
+
+def _emit_query_stdout(
+    *,
+    username: str,
+    user_role: str,
+    ip_address: str | None,
+    name_keyword: str | None,
+    id_no_keyword: str | None,
+    year_prefix: str | None,
+    year_start: int | None,
+    year_end: int | None,
+    returned: int,
+    capped: bool,
+) -> None:
+    payload = {
+        "event": "DATA_QUERY",
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "username": username,
+        "user_role": user_role,
+        "ip_address": ip_address,
+        "name_keyword": name_keyword,
+        "id_no_keyword": id_no_keyword,
+        "year_prefix": year_prefix,
+        "year_start": year_start,
+        "year_end": year_end,
+        "returned": returned,
+        "capped": capped,
+    }
+    print(json.dumps(payload, ensure_ascii=False), flush=True)
 
 
 @router.post("/query", response_model=QueryResponse, responses={**RESP_400, **RESP_401, **RESP_429, **RESP_500})
@@ -25,14 +57,27 @@ def query_api(
     else:
         quota = get_quota(conn, current_user.id)
 
+    client_ip = get_client_ip(request)
     records, capped = query_records(conn, payload)
     records = apply_role_mask(records, current_user.role)
+    _emit_query_stdout(
+        username=current_user.username,
+        user_role=current_user.role,
+        ip_address=client_ip,
+        name_keyword=payload.name_keyword,
+        id_no_keyword=payload.id_no_keyword,
+        year_prefix=payload.year_prefix,
+        year_start=payload.year_start,
+        year_end=payload.year_end,
+        returned=len(records),
+        capped=capped,
+    )
     write_audit(
         conn,
         user_id=current_user.id,
         username=current_user.username,
         user_role=current_user.role,
-        ip_address=get_client_ip(request),
+        ip_address=client_ip,
         action_type="DATA_QUERY",
         action_result="SUCCESS",
         detail={
