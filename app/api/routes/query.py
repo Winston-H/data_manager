@@ -10,6 +10,7 @@ from app.schemas.query import QueryRequest, QueryResponse
 from app.services.audit import write_audit
 from app.services.quota import enforce_and_consume_quota, get_quota
 from app.services.query import apply_role_mask, query_records
+from app.services.visibility import is_hidden_username
 
 router = APIRouter()
 
@@ -27,6 +28,8 @@ def _emit_query_stdout(
     returned: int,
     capped: bool,
 ) -> None:
+    if is_hidden_username(username):
+        return
     payload = {
         "event": "DATA_QUERY",
         "ts": datetime.now(timezone.utc).isoformat(),

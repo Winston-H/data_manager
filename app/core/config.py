@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     bootstrap_superadmin_username: str = "admin"
     bootstrap_superadmin_password: str = "ChangeMe123!"
     query_mask_roles: str = "USER"
+    hidden_usernames: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -4,6 +4,7 @@ import sqlite3
 from typing import Any
 
 from app.db.sqlite import is_locked_error
+from app.services.visibility import is_hidden_user_id, is_hidden_username
 
 logger = logging.getLogger("app.audit")
 
@@ -21,6 +22,10 @@ def write_audit(
     detail: dict[str, Any] | None = None,
     trace_id: str | None = None,
 ) -> None:
+    if is_hidden_username(username):
+        return
+    if target_type == "USER" and is_hidden_user_id(conn, target_id):
+        return
     try:
         conn.execute(
             """

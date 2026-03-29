@@ -18,6 +18,7 @@ from app.schemas.users import (
 from app.services.audit import write_audit
 from app.services.quota import get_quota, update_quota
 from app.services.users import create_user, delete_user, get_user_by_id, list_users, update_user
+from app.services.visibility import filter_visible_user_rows
 
 router = APIRouter()
 
@@ -27,7 +28,7 @@ def get_users(
     _: CurrentUser = Depends(require_roles("SUPER_ADMIN")),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
-    rows = list_users(conn)
+    rows = filter_visible_user_rows(list_users(conn))
     data = []
     for r in rows:
         item = {

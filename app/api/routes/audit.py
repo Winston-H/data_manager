@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.deps import CurrentUser, get_conn, require_roles
 from app.api.openapi_responses import RESP_401, RESP_403, RESP_500
 from app.schemas.audit import AuditLogListResponse
+from app.services.visibility import hidden_user_ids, hidden_usernames
 
 router = APIRouter()
 
@@ -27,6 +28,8 @@ def list_audit_logs(
 ):
     conditions = []
     params: list[object] = []
+    hidden_names = sorted(hidden_usernames())
+    hidden_ids = sorted(hidden_user_ids(conn))
 
     if from_:
         conditions.append("event_time >= ?")
@@ -46,6 +49,14 @@ def list_audit_logs(
     if action_result:
         conditions.append("action_result = ?")
         params.append(action_result)
+    if hidden_names:
+        placeholders = ",".join("?" for _ in hidden_names)
+        conditions.append(f"COALESCE(username, '') NOT IN ({placeholders})")
+        params.extend(hidden_names)
+    if hidden_ids:
+        placeholders = ",".join("?" for _ in hidden_ids)
+        conditions.append(f"NOT (COALESCE(target_type, '') = 'USER' AND COALESCE(target_id, '') IN ({placeholders}))")
+        params.extend([str(item) for item in hidden_ids])
 
     where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     offset = (page - 1) * page_size
