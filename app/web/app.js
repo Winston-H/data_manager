@@ -539,8 +539,58 @@ async function api(path, options = {}) {
   return payload;
 }
 
-function copyText(value) {
-  return navigator.clipboard.writeText(value);
+function legacyCopyText(value) {
+  const textarea = document.createElement("textarea");
+  textarea.value = String(value ?? "");
+  textarea.setAttribute("readonly", "readonly");
+  textarea.setAttribute("aria-hidden", "true");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  textarea.style.left = "-9999px";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+  document.body.appendChild(textarea);
+
+  const selection = document.getSelection();
+  const previousRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } finally {
+    document.body.removeChild(textarea);
+    if (selection) {
+      selection.removeAllRanges();
+      if (previousRange) {
+        selection.addRange(previousRange);
+      }
+    }
+    if (activeElement && document.contains(activeElement)) {
+      activeElement.focus();
+    }
+  }
+
+  if (!copied) {
+    throw new Error("当前浏览器不支持复制");
+  }
+}
+
+async function copyText(value) {
+  const text = String(value ?? "");
+  if (window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (err) {
+      console.warn("Clipboard API copy failed, falling back to execCommand.", err);
+    }
+  }
+  legacyCopyText(text);
 }
 
 function escapeHtml(raw) {
