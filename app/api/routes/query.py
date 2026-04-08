@@ -1,11 +1,11 @@
 import json
 import sqlite3
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 
 from app.api.deps import CurrentUser, get_client_ip, get_conn, get_current_user
 from app.api.openapi_responses import RESP_400, RESP_401, RESP_429, RESP_500
+from app.core.time import now_local_isoformat
 from app.schemas.query import QueryRequest, QueryResponse
 from app.services.audit import write_audit
 from app.services.quota import enforce_and_consume_quota, get_quota
@@ -32,7 +32,7 @@ def _emit_query_stdout(
         return
     payload = {
         "event": "DATA_QUERY",
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": now_local_isoformat(),
         "username": username,
         "user_role": user_role,
         "ip_address": ip_address,

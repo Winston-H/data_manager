@@ -3,6 +3,7 @@ import sqlite3
 from app.core.errors import ApiError, ErrorCode
 from app.core.error_reasons import ErrorReason
 from app.core.security import hash_password, verify_password
+from app.core.time import local_today_isoformat, now_local_sql
 
 
 def get_user_by_username(conn: sqlite3.Connection, username: str) -> sqlite3.Row | None:
@@ -24,6 +25,7 @@ def verify_active_super_admin_password(conn: sqlite3.Connection, password: str) 
 
 
 def list_users(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    usage_date = local_today_isoformat()
     return conn.execute(
         """
         SELECT
@@ -40,17 +42,22 @@ def list_users(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         LEFT JOIN user_quotas q ON q.user_id = u.id
         LEFT JOIN query_usage_daily d
           ON d.user_id = u.id
-         AND d.usage_date = date('now')
+         AND d.usage_date = ?
         ORDER BY u.id ASC
-        """
+        """,
+        (usage_date,),
     ).fetchall()
 
 
 def create_user(conn: sqlite3.Connection, username: str, password: str, role: str) -> sqlite3.Row:
+    now_text = now_local_sql()
     try:
         cur = conn.execute(
-            "INSERT INTO users(username, password_hash, role) VALUES (?, ?, ?)",
-            (username, hash_password(password), role),
+            """
+            INSERT INTO users(username, password_hash, role, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (username, hash_password(password), role, now_text, now_text),
         )
     except sqlite3.IntegrityError as exc:
         raise ApiError(
@@ -100,8 +107,8 @@ def update_user(conn: sqlite3.Connection, user_id: int, role: str | None, is_act
         )
 
     conn.execute(
-        "UPDATE users SET role = ?, is_active = ?, updated_at = datetime('now') WHERE id = ?",
-        (new_role, new_active, user_id),
+        "UPDATE users SET role = ?, is_active = ?, updated_at = ? WHERE id = ?",
+        (new_role, new_active, now_local_sql(), user_id),
     )
     return get_user_by_id(conn, user_id)  # type: ignore[return-value]
 

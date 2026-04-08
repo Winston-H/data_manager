@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from app.core.config import get_settings
+from app.core.time import local_sql_days_ago, now_local_sql
 from app.db.sqlite import is_locked_error
 from app.services.visibility import is_hidden_user_id, is_hidden_username
 
@@ -31,9 +32,10 @@ def cleanup_expired_audit_logs(conn: sqlite3.Connection, *, retention_days: int 
     days = int(retention_days if retention_days is not None else settings.audit_log_retention_days)
     if days <= 0:
         return 0
+    cutoff = local_sql_days_ago(days)
     cur = conn.execute(
-        "DELETE FROM audit_logs WHERE event_time < datetime('now', ?)",
-        (f"-{days} day",),
+        "DELETE FROM audit_logs WHERE event_time < ?",
+        (cutoff,),
     )
     return int(cur.rowcount)
 
@@ -86,16 +88,19 @@ def write_audit(
         return
     cleanup_expired_audit_logs_if_due(conn)
     detail = _prune_audit_detail(detail)
+    event_time = now_local_sql()
     try:
         conn.execute(
             """
             INSERT INTO audit_logs(
+                event_time,
                 user_id, username, user_role, ip_address,
                 action_type, action_result, target_type, target_id,
                 detail_json, trace_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                event_time,
                 user_id,
                 username,
                 user_role,

@@ -1,8 +1,8 @@
 import sqlite3
-from datetime import date
 
 from app.core.errors import ApiError, ErrorCode
 from app.core.error_reasons import ErrorReason
+from app.core.time import local_today_isoformat, now_local_sql
 
 
 class QuotaInfo(dict):
@@ -22,7 +22,7 @@ def get_quota(conn: sqlite3.Connection, user_id: int) -> QuotaInfo:
             "SELECT daily_limit, total_limit, total_used FROM user_quotas WHERE user_id = ?", (user_id,)
         ).fetchone()
 
-    usage_date = date.today().isoformat()
+    usage_date = local_today_isoformat()
     daily = conn.execute(
         "SELECT used_count FROM query_usage_daily WHERE user_id = ? AND usage_date = ?",
         (user_id, usage_date),
@@ -38,6 +38,7 @@ def get_quota(conn: sqlite3.Connection, user_id: int) -> QuotaInfo:
 
 
 def update_quota(conn: sqlite3.Connection, user_id: int, daily_limit: int, total_limit: int) -> QuotaInfo:
+    updated_at = now_local_sql()
     conn.execute(
         """
         INSERT INTO user_quotas(user_id, daily_limit, total_limit, total_used)
@@ -45,9 +46,9 @@ def update_quota(conn: sqlite3.Connection, user_id: int, daily_limit: int, total
         ON CONFLICT(user_id) DO UPDATE SET
           daily_limit=excluded.daily_limit,
           total_limit=excluded.total_limit,
-          updated_at=datetime('now')
+          updated_at=?
         """,
-        (user_id, daily_limit, total_limit, user_id),
+        (user_id, daily_limit, total_limit, user_id, updated_at),
     )
     return get_quota(conn, user_id)
 
@@ -83,7 +84,7 @@ def enforce_and_consume_quota(conn: sqlite3.Connection, user_id: int) -> QuotaIn
             },
         )
 
-    usage_date = date.today().isoformat()
+    usage_date = local_today_isoformat()
     conn.execute(
         """
         INSERT INTO query_usage_daily(user_id, usage_date, used_count)
@@ -93,7 +94,7 @@ def enforce_and_consume_quota(conn: sqlite3.Connection, user_id: int) -> QuotaIn
         (user_id, usage_date),
     )
     conn.execute(
-        "UPDATE user_quotas SET total_used = total_used + 1, updated_at=datetime('now') WHERE user_id = ?",
-        (user_id,),
+        "UPDATE user_quotas SET total_used = total_used + 1, updated_at = ? WHERE user_id = ?",
+        (now_local_sql(), user_id),
     )
     return get_quota(conn, user_id)

@@ -1,15 +1,18 @@
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 
 import jwt
 from openpyxl import Workbook
 
+from app.api.routes.query import _emit_query_stdout
 from app.core.error_reasons import ALL_ERROR_REASONS, ErrorReason
 from app.core.config import get_settings
+from app.core.time import format_local_sql_datetime, now_local, now_local_sql
 from app.db.sqlite import open_db_connection
 from app.services.importer import create_import_job
 from app.services.records import insert_record
@@ -740,8 +743,8 @@ class OpenApiContractTest(unittest.TestCase):
 
     def test_27_audit_logs_retention_keeps_only_recent_three_days(self) -> None:
         admin_headers = self._admin_headers()
-        old_time = (datetime.now(timezone.utc) - timedelta(days=4)).strftime("%Y-%m-%d %H:%M:%S")
-        recent_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        old_time = format_local_sql_datetime(now_local() - timedelta(days=4))
+        recent_time = now_local_sql()
 
         conn = open_db_connection()
         try:
@@ -783,6 +786,27 @@ class OpenApiContractTest(unittest.TestCase):
             conn.close()
         self.assertIsNone(old_row)
         self.assertIsNotNone(recent_row)
+
+    def test_27_query_stdout_uses_local_timezone(self) -> None:
+        output = StringIO()
+        with redirect_stdout(output):
+            _emit_query_stdout(
+                username="admin",
+                user_role="SUPER_ADMIN",
+                ip_address="127.0.0.1",
+                name_keyword="张",
+                id_no_keyword="1101",
+                year_prefix="199",
+                year_start=1990,
+                year_end=1999,
+                returned=1,
+                capped=False,
+            )
+
+        payload = json.loads(output.getvalue().strip())
+        logged_at = datetime.fromisoformat(payload["ts"])
+        self.assertIsNotNone(logged_at.tzinfo)
+        self.assertEqual(logged_at.utcoffset(), now_local().utcoffset())
 
     def test_28_user_cannot_import_and_cannot_view_others_job(self) -> None:
         admin_headers = self._admin_headers()

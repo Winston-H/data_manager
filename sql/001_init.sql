@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('SUPER_ADMIN', 'ADMIN', 'USER')),
   is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   last_login_at TEXT
 );
 
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS user_quotas (
   daily_limit INTEGER NOT NULL DEFAULT 0,
   total_limit INTEGER NOT NULL DEFAULT 0,
   total_used INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -41,14 +41,14 @@ CREATE TABLE IF NOT EXISTS import_jobs (
   started_at TEXT,
   finished_at TEXT,
   created_by INTEGER NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
 
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  event_time TEXT NOT NULL DEFAULT (datetime('now')),
+  event_time TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   user_id INTEGER,
   username TEXT,
   user_role TEXT,

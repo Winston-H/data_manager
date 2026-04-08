@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.core.errors import ApiError, ErrorCode
 from app.core.error_reasons import ErrorReason
 from app.core.security import create_access_token, decode_access_token, verify_password
+from app.core.time import now_local_sql
 from app.db.sqlite import is_locked_error
 from app.schemas.auth import LoginRequest, LoginResponse, UserProfileResponse
 from app.schemas.common import MessageResponse
@@ -59,7 +60,7 @@ def login(payload: LoginRequest, request: Request, conn: sqlite3.Connection = De
         )
 
     try:
-        conn.execute("UPDATE users SET last_login_at = datetime('now') WHERE id = ?", (user["id"],))
+        conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (now_local_sql(), user["id"]))
     except sqlite3.OperationalError as exc:
         if not is_locked_error(exc):
             raise

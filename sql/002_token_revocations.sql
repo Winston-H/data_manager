@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS token_revocations (
   jti TEXT PRIMARY KEY,
   expires_at INTEGER NOT NULL,
   revoked_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   FOREIGN KEY (revoked_by) REFERENCES users(id)
 );
 

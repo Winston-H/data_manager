@@ -12,6 +12,7 @@ from openpyxl import load_workbook
 
 from app.core.config import get_settings
 from app.core.error_reasons import ErrorReason
+from app.core.time import now_local_sql
 from app.db.sqlite import open_db_connection
 from app.services.audit import write_audit
 from app.services.clickhouse_records import insert_clickhouse_records
@@ -118,12 +119,13 @@ def get_import_source_path(job_id: int, filename: str | None = None) -> Path:
 
 
 def create_import_job(conn: sqlite3.Connection, filename: str, file_size_bytes: int, created_by: int) -> int:
+    created_at = now_local_sql()
     cur = conn.execute(
         """
-        INSERT INTO import_jobs(filename, file_size_bytes, status, created_by)
-        VALUES (?, ?, 'PENDING', ?)
+        INSERT INTO import_jobs(filename, file_size_bytes, status, created_by, created_at)
+        VALUES (?, ?, 'PENDING', ?, ?)
         """,
-        (filename, file_size_bytes, created_by),
+        (filename, file_size_bytes, created_by, created_at),
     )
     return int(cur.lastrowid)
 
@@ -143,11 +145,11 @@ def cancel_import_job(conn: sqlite3.Connection, job_id: int, *, cancelled_by: st
         """
         UPDATE import_jobs
         SET status = 'CANCELLED',
-            finished_at = datetime('now'),
+            finished_at = ?,
             error_summary = COALESCE(error_summary || ';', '') || ?
         WHERE id = ?
         """,
-        (f"cancelled_by={cancelled_by}", job_id),
+        (now_local_sql(), f"cancelled_by={cancelled_by}", job_id),
     )
     conn.commit()
     return get_import_job(conn, job_id)
@@ -341,8 +343,8 @@ def run_clickhouse_import_job(
 ) -> sqlite3.Row:
     profile = get_import_runtime_profile()
     conn.execute(
-        "UPDATE import_jobs SET status='RUNNING', started_at=datetime('now') WHERE id = ?",
-        (job_id,),
+        "UPDATE import_jobs SET status='RUNNING', started_at = ? WHERE id = ?",
+        (now_local_sql(), job_id),
     )
     conn.commit()
     _set_live_progress(
@@ -429,10 +431,10 @@ def run_clickhouse_import_job(
                 skipped_rows = ?,
                 failed_rows = ?,
                 error_summary = ?,
-                finished_at = datetime('now')
+                finished_at = ?
             WHERE id = ?
             """,
-            (total_rows, success_rows, skipped_rows, failed_rows + 1, error_summary, job_id),
+            (total_rows, success_rows, skipped_rows, failed_rows + 1, error_summary, now_local_sql(), job_id),
         )
         conn.commit()
         _set_live_progress(
@@ -457,10 +459,10 @@ def run_clickhouse_import_job(
                 skipped_rows = ?,
                 failed_rows = ?,
                 error_summary = COALESCE(error_summary || ';', '') || ?,
-                finished_at = datetime('now')
+                finished_at = ?
             WHERE id = ?
             """,
-            (total_rows, success_rows, skipped_rows, failed_rows, error_summary, job_id),
+            (total_rows, success_rows, skipped_rows, failed_rows, error_summary, now_local_sql(), job_id),
         )
         conn.commit()
         _set_live_progress(
@@ -484,10 +486,10 @@ def run_clickhouse_import_job(
             skipped_rows = ?,
             failed_rows = ?,
             error_summary = ?,
-            finished_at = datetime('now')
+            finished_at = ?
         WHERE id = ?
         """,
-        (total_rows, success_rows, skipped_rows, failed_rows, error_summary, job_id),
+        (total_rows, success_rows, skipped_rows, failed_rows, error_summary, now_local_sql(), job_id),
     )
     conn.commit()
     _set_live_progress(
@@ -507,11 +509,11 @@ def _mark_job_failed(conn: sqlite3.Connection, job_id: int, reason: str) -> None
         """
         UPDATE import_jobs
         SET status = 'FAILED',
-            finished_at = datetime('now'),
+            finished_at = ?,
             error_summary = COALESCE(error_summary || ';', '') || ?
         WHERE id = ?
         """,
-        (reason, job_id),
+        (now_local_sql(), reason, job_id),
     )
 
 
